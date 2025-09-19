@@ -1,0 +1,32 @@
+# Node.js
+node_modules/
+dist/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+env/
+venv/
+
+# Archivos de entorno
+.env*
+env.development
+
+# Logs y temporales
+*.log
+*.tmp
+*.swp
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# IDEs y configuración local
+.vscode/
+.idea/
+
+# Otros
+*.bak
+*.old

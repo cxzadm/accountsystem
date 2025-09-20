@@ -75,6 +75,8 @@ class AccountLedgerSummary(BaseModel):
     account_name: str
     account_type: str
     nature: str
+    parent_code: Optional[str] = None
+    level: int = 1
     initial_debit_balance: float
     initial_credit_balance: float
     current_debit_balance: float

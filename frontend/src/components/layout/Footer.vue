@@ -36,18 +36,12 @@ export default {
 
 <style scoped>
 .footer {
-  margin-top: auto;
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 1000;
-}
-
-body {
-  padding-bottom: 80px;
+  margin-top: 2rem;
+  position: relative;
+  z-index: 1;
 }
 </style>
+
 
 
 

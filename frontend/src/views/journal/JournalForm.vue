@@ -20,7 +20,7 @@
 
     <!-- Form -->
     <div class="row">
-      <div class="col-md-8">
+      <div class="col-12">
         <div class="card">
           <div class="card-body">
             <!-- Prominent number display -->
@@ -31,7 +31,15 @@
                   <code>{{ form.entry_number || (form.document_type_code ? form.document_type_code + '-…' : 'Seleccione tipo') }}</code>
                 </div>
               </div>
-              <div>
+              <div class="d-flex gap-2">
+                <button
+                  type="button"
+                  class="btn btn-outline-info"
+                  @click="showHelpModal = true"
+                  title="Ayuda para crear asientos"
+                >
+                  <i class="fas fa-info-circle"></i>
+                </button>
                 <button
                   type="button"
                   class="btn btn-outline-secondary"
@@ -164,8 +172,6 @@
                                 v-for="account in accountType.accounts"
                                 :key="account.id"
                                 :value="account.code"
-                                :disabled="account.account_relationship_type === 'P'"
-                                :class="{ 'text-muted': account.account_relationship_type === 'P' }"
                               >
                                 {{ getAccountDisplayText(account) }}
                               </option>
@@ -173,7 +179,7 @@
                           </select>
                           <small class="text-muted" v-if="line.account_code && getSelectedAccountType(line.account_code) === 'P'">
                             <i class="fas fa-info-circle me-1"></i>
-                            Solo se pueden seleccionar cuentas hijas (H)
+                            Cuenta padre seleccionada
                           </small>
                         </td>
                         <td>
@@ -281,33 +287,128 @@
           </div>
         </div>
       </div>
+    </div>
 
-      <!-- Help Panel -->
-      <div class="col-md-4">
-        <div class="card">
-          <div class="card-header">
-            <h6 class="mb-0">Ayuda</h6>
+    <!-- Help Modal -->
+    <div class="modal fade" :class="{ show: showHelpModal }" :style="{ display: showHelpModal ? 'block' : 'none' }" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">
+              <i class="fas fa-info-circle me-2 text-info"></i>
+              Ayuda para Crear Asientos Contables
+            </h5>
+            <button type="button" class="btn-close" @click="showHelpModal = false"></button>
           </div>
-          <div class="card-body">
-            <h6>Reglas del Asiento:</h6>
-            <ul class="list-unstyled small">
-              <li>• El total de débitos debe igualar al total de créditos</li>
-              <li>• Al menos debe haber una línea con débito y una con crédito</li>
-              <li>• Las cuentas deben estar activas en el plan contable</li>
-              <li>• La descripción debe ser clara y concisa</li>
-            </ul>
+          <div class="modal-body">
+            <div class="row">
+              <div class="col-md-6">
+                <h6 class="text-primary">
+                  <i class="fas fa-balance-scale me-2"></i>
+                  Reglas del Asiento
+                </h6>
+                <ul class="list-unstyled">
+                  <li class="mb-2">
+                    <i class="fas fa-check-circle text-success me-2"></i>
+                    El total de débitos debe igualar al total de créditos
+                  </li>
+                  <li class="mb-2">
+                    <i class="fas fa-check-circle text-success me-2"></i>
+                    Al menos debe haber una línea con débito y una con crédito
+                  </li>
+                  <li class="mb-2">
+                    <i class="fas fa-check-circle text-success me-2"></i>
+                    Las cuentas deben estar activas en el plan contable
+                  </li>
+                  <li class="mb-2">
+                    <i class="fas fa-check-circle text-success me-2"></i>
+                    La descripción debe ser clara y concisa
+                  </li>
+                </ul>
 
-            <h6 class="mt-3">Tipos de Asiento:</h6>
-            <ul class="list-unstyled small">
-              <li><strong>Manual:</strong> Asiento creado manualmente</li>
-              <li><strong>Automático:</strong> Generado por el sistema</li>
-              <li><strong>Ajuste:</strong> Para correcciones</li>
-              <li><strong>Cierre:</strong> Para cierre de período</li>
-            </ul>
+                <h6 class="text-primary mt-4">
+                  <i class="fas fa-magic me-2"></i>
+                  Funciones Automáticas
+                </h6>
+                <ul class="list-unstyled">
+                  <li class="mb-2">
+                    <i class="fas fa-lightbulb text-warning me-2"></i>
+                    <strong>Descripción automática:</strong> Se llena con el nombre de la cuenta seleccionada
+                  </li>
+                  <li class="mb-2">
+                    <i class="fas fa-lightbulb text-warning me-2"></i>
+                    <strong>Validación en tiempo real:</strong> Muestra si el asiento está balanceado
+                  </li>
+                  <li class="mb-2">
+                    <i class="fas fa-lightbulb text-warning me-2"></i>
+                    <strong>Identificación de cuentas:</strong> Muestra claramente si es cuenta Padre (P) o Hija (H)
+                  </li>
+                </ul>
+              </div>
+              <div class="col-md-6">
+                <h6 class="text-primary">
+                  <i class="fas fa-tags me-2"></i>
+                  Tipos de Asiento
+                </h6>
+                <div class="row">
+                  <div class="col-6">
+                    <div class="card border-primary mb-2">
+                      <div class="card-body p-2">
+                        <h6 class="card-title text-primary mb-1">Manual</h6>
+                        <p class="card-text small mb-0">Asiento creado manualmente por el usuario</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-6">
+                    <div class="card border-success mb-2">
+                      <div class="card-body p-2">
+                        <h6 class="card-title text-success mb-1">Automático</h6>
+                        <p class="card-text small mb-0">Generado automáticamente por el sistema</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-6">
+                    <div class="card border-warning mb-2">
+                      <div class="card-body p-2">
+                        <h6 class="card-title text-warning mb-1">Ajuste</h6>
+                        <p class="card-text small mb-0">Para correcciones contables</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-6">
+                    <div class="card border-info mb-2">
+                      <div class="card-body p-2">
+                        <h6 class="card-title text-info mb-1">Cierre</h6>
+                        <p class="card-text small mb-0">Para cierre de período contable</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <h6 class="text-primary mt-4">
+                  <i class="fas fa-tips me-2"></i>
+                  Consejos Útiles
+                </h6>
+                <div class="alert alert-info">
+                  <ul class="mb-0 small">
+                    <li>Las cuentas <strong>Padre (P)</strong> y <strong>Hija (H)</strong> están claramente identificadas</li>
+                    <li>El indicador de balance te muestra si el asiento está correcto</li>
+                    <li>La descripción se llena automáticamente al seleccionar una cuenta</li>
+                    <li>Usa el botón "Agregar Línea" para crear asientos con múltiples movimientos</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showHelpModal = false">
+              Cerrar
+            </button>
           </div>
         </div>
       </div>
     </div>
+    <div v-if="showHelpModal" class="modal-backdrop fade show"></div>
   </div>
 </template>
 
@@ -331,6 +432,7 @@ export default {
     const accounts = ref([])
     const documentTypes = ref([])
     const reserving = ref(false)
+    const showHelpModal = ref(false)
 
     const form = reactive({
       date: new Date().toISOString().split('T')[0],
@@ -404,17 +506,24 @@ export default {
       return Object.values(types).filter(type => type.accounts.length > 0)
     })
 
+    // Función para determinar si una cuenta es padre o hija
+    const getRelationshipType = (account) => {
+      const hasChildren = accounts.value.some(acc => acc.parent_code === account.code)
+      return hasChildren ? 'P' : 'H'
+    }
+
     // Función para mostrar texto de cuenta con jerarquía
     const getAccountDisplayText = (account) => {
       const indent = '  '.repeat(account.level - 1)
-      const typeIndicator = account.account_relationship_type === 'P' ? ' (P)' : ' (H)'
+      const relationshipType = getRelationshipType(account)
+      const typeIndicator = ` (${relationshipType})`
       return `${indent}${account.code} - ${account.name}${typeIndicator}`
     }
 
     // Función para obtener el tipo de relación de una cuenta seleccionada
     const getSelectedAccountType = (accountCode) => {
       const account = accounts.value.find(acc => acc.code === accountCode)
-      return account ? account.account_relationship_type : null
+      return account ? getRelationshipType(account) : null
     }
 
     const loadDocumentTypes = async () => {
@@ -515,27 +624,19 @@ export default {
     const updateAccountName = (index) => {
       const account = accounts.value.find(acc => acc.code === form.lines[index].account_code)
       if (account) {
-        // Verificar que solo se puedan seleccionar cuentas hijas
-        if (account.account_relationship_type === 'P') {
-          toast.warning('Solo se pueden seleccionar cuentas hijas (H). Las cuentas padre (P) son solo para referencia de la estructura.')
-          form.lines[index].account_code = ''
-          form.lines[index].account_name = ''
-          return
-        }
-        
         form.lines[index].account_name = account.name
-        // Limpiar descripción si no está llena para usar la descripción de la cuenta
-        if (!form.lines[index].description.trim()) {
-          form.lines[index].description = account.name
-        }
+        // Actualizar la descripción con el nombre de la cuenta
+        form.lines[index].description = account.name
       } else {
         form.lines[index].account_name = ''
+        form.lines[index].description = ''
       }
     }
 
     const calculateTotals = () => {
       // This is handled by computed properties
     }
+
 
     const validateForm = () => {
       // Clear previous errors
@@ -687,7 +788,9 @@ export default {
       handleSubmit,
       formatCurrency,
       getAccountDisplayText,
-      getSelectedAccountType
+      getSelectedAccountType,
+      getRelationshipType,
+      showHelpModal
     }
   }
 }
@@ -736,6 +839,115 @@ option:not([disabled]) {
 /* Indentación para cuentas hijas */
 option {
   padding-left: 10px;
+}
+
+/* Ajustar anchos de columnas para mejor visualización */
+.table th:nth-child(1),
+.table td:nth-child(1) {
+  width: 30%;
+  min-width: 250px;
+}
+
+.table th:nth-child(2),
+.table td:nth-child(2) {
+  width: 25%;
+  min-width: 200px;
+}
+
+.table th:nth-child(3),
+.table td:nth-child(3) {
+  width: 12%;
+  min-width: 100px;
+}
+
+.table th:nth-child(4),
+.table td:nth-child(4) {
+  width: 12%;
+  min-width: 100px;
+}
+
+.table th:nth-child(5),
+.table td:nth-child(5) {
+  width: 15%;
+  min-width: 120px;
+}
+
+.table th:nth-child(6),
+.table td:nth-child(6) {
+  width: 6%;
+  min-width: 50px;
+}
+
+/* Mejorar el selector de cuentas */
+.form-select-sm {
+  font-size: 0.85rem;
+  padding: 0.4rem 0.6rem;
+  min-width: 220px;
+  max-width: 100%;
+  border-radius: 0.375rem;
+  border: 1px solid #ced4da;
+  background-color: #fff;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.form-select-sm:focus {
+  border-color: #86b7fe;
+  outline: 0;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+/* Asegurar que el texto del selector sea visible */
+.form-select option {
+  white-space: nowrap;
+  overflow: visible;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+/* Mejorar la tabla general */
+.table-responsive {
+  border-radius: 0.5rem;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.table {
+  margin-bottom: 0;
+}
+
+.table th {
+  background-color: #f8f9fa;
+  border-bottom: 2px solid #dee2e6;
+  font-weight: 600;
+  color: #495057;
+  padding: 0.75rem 0.5rem;
+}
+
+.table td {
+  padding: 0.6rem 0.5rem;
+  vertical-align: middle;
+  border-bottom: 1px solid #dee2e6;
+}
+
+/* Mejorar los inputs de la tabla */
+.table .form-control-sm,
+.table .form-select-sm {
+  border-radius: 0.375rem;
+  border: 1px solid #ced4da;
+  transition: all 0.15s ease-in-out;
+}
+
+.table .form-control-sm:focus,
+.table .form-select-sm:focus {
+  border-color: #86b7fe;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+/* Mejorar el mensaje informativo */
+.table small.text-muted {
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+  display: block;
+  line-height: 1.2;
 }
 </style>
 

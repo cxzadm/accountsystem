@@ -15,8 +15,19 @@ async def get_accounts(
     limit: int = Query(100, ge=1, le=1000),
     search: Optional[str] = Query(None),
     account_type: Optional[str] = Query(None),
-    is_active: Optional[str] = Query(None),
+    is_active: Optional[bool] = Query(None),
     balance_filter: Optional[str] = Query(None, description="Filter by balances: 'all', 'with-balances', 'without-balances'"),
+    # Parámetros de búsqueda inteligente
+    description: Optional[str] = Query(None, description="Buscar en descripción"),
+    min_balance: Optional[float] = Query(None, description="Saldo mínimo"),
+    max_balance: Optional[float] = Query(None, description="Saldo máximo"),
+    exact_balance: Optional[float] = Query(None, description="Saldo exacto"),
+    level: Optional[int] = Query(None, description="Nivel de cuenta"),
+    nature: Optional[str] = Query(None, description="Naturaleza de cuenta"),
+    parent_code: Optional[str] = Query(None, description="Código de cuenta padre"),
+    document_type_code: Optional[str] = Query(None, description="Código de tipo de documento"),
+    reference: Optional[str] = Query(None, description="Referencia"),
+    entry_number: Optional[str] = Query(None, description="Número de asiento"),
     current_user: User = Depends(require_permission("accounts:read"))
 ):
     """Obtener lista de cuentas contables con filtros"""
@@ -40,6 +51,7 @@ async def get_accounts(
     
     query = {"company_id": company_id}
     
+    # Búsqueda general
     if search:
         query["$or"] = [
             {"code": {"$regex": search, "$options": "i"}},
@@ -47,11 +59,80 @@ async def get_accounts(
             {"description": {"$regex": search, "$options": "i"}}
         ]
     
+    # Filtros básicos
     if account_type:
         query["account_type"] = account_type
     
-    if is_active is not None and is_active != "":
-        query["is_active"] = is_active.lower() == "true"
+    if is_active is not None:
+        query["is_active"] = is_active
+    
+    # Búsqueda inteligente
+    if description:
+        query["description"] = {"$regex": description, "$options": "i"}
+    
+    if level is not None:
+        query["level"] = level
+    
+    if nature:
+        query["nature"] = nature
+    
+    if parent_code:
+        query["parent_code"] = parent_code
+    
+    # Filtros de saldo
+    if min_balance is not None or max_balance is not None or exact_balance is not None:
+        balance_query = {}
+        if exact_balance is not None:
+            # Calcular saldo exacto
+            balance_query["$expr"] = {
+                "$eq": [
+                    {
+                        "$add": [
+                            {"$ifNull": ["$initial_debit_balance", 0]},
+                            {"$ifNull": ["$current_debit_balance", 0]}
+                        ]
+                    },
+                    {
+                        "$add": [
+                            {"$ifNull": ["$initial_credit_balance", 0]},
+                            {"$ifNull": ["$current_credit_balance", 0]}
+                        ]
+                    }
+                ]
+            }
+        else:
+            # Calcular saldo neto
+            balance_query["$expr"] = {
+                "$gte": [
+                    {
+                        "$subtract": [
+                            {
+                                "$add": [
+                                    {"$ifNull": ["$initial_debit_balance", 0]},
+                                    {"$ifNull": ["$current_debit_balance", 0]}
+                                ]
+                            },
+                            {
+                                "$add": [
+                                    {"$ifNull": ["$initial_credit_balance", 0]},
+                                    {"$ifNull": ["$current_credit_balance", 0]}
+                                ]
+                            }
+                        ]
+                    },
+                    min_balance or 0
+                ]
+            }
+            if max_balance is not None:
+                balance_query["$expr"]["$lte"] = max_balance
+        
+        query.update(balance_query)
+    
+    # Filtros de documentos (requieren join con journal entries)
+    if document_type_code or reference or entry_number:
+        # Por ahora, estos filtros no se pueden aplicar directamente a las cuentas
+        # Se podrían implementar con agregación de MongoDB
+        pass
     
     accounts = await Account.find(query).skip(skip).limit(limit).to_list()
     

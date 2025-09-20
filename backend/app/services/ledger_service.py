@@ -429,6 +429,8 @@ class LedgerService:
             account_name=account.name,
             account_type=account.account_type.value,
             nature=account.nature.value,
+            parent_code=account.parent_code,
+            level=account.level,
             initial_debit_balance=account.initial_debit_balance,
             initial_credit_balance=account.initial_credit_balance,
             current_debit_balance=account.current_debit_balance,
@@ -442,17 +444,41 @@ class LedgerService:
         )
     
     @staticmethod
-    async def get_general_ledger(company_id: str, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> List[AccountLedgerSummary]:
+    async def get_general_ledger(company_id: str, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None, search_filters: Optional[dict] = None) -> List[AccountLedgerSummary]:
         """
         Obtener el mayor general de todas las cuentas
         """
         print(f"🔍 Buscando cuentas para empresa: {company_id}")
 
+        # Construir query para cuentas
+        account_query = {
+            "company_id": company_id,
+            "is_active": True
+        }
+        
+        # Aplicar filtros de búsqueda inteligente
+        if search_filters:
+            if search_filters.get('search'):
+                account_query["$or"] = [
+                    {"code": {"$regex": search_filters['search'], "$options": "i"}},
+                    {"name": {"$regex": search_filters['search'], "$options": "i"}},
+                    {"description": {"$regex": search_filters['search'], "$options": "i"}}
+                ]
+            
+            if search_filters.get('description'):
+                account_query["description"] = {"$regex": search_filters['description'], "$options": "i"}
+            
+            if search_filters.get('level') is not None:
+                account_query["level"] = search_filters['level']
+            
+            if search_filters.get('nature'):
+                account_query["nature"] = search_filters['nature']
+            
+            if search_filters.get('parent_code'):
+                account_query["parent_code"] = search_filters['parent_code']
+        
         # Obtener todas las cuentas activas de la empresa
-        accounts = await Account.find(
-            Account.company_id == company_id,
-            Account.is_active == True
-        ).to_list()
+        accounts = await Account.find(account_query).to_list()
 
         print(f"📊 Cuentas encontradas: {len(accounts)}")
 
@@ -475,6 +501,17 @@ class LedgerService:
                 query["date"]["$lt"] = inclusive_end
             else:
                 query["date"] = {"$lt": inclusive_end}
+        
+        # Aplicar filtros de documentos
+        if search_filters:
+            if search_filters.get('document_type_code'):
+                query["document_type_code"] = search_filters['document_type_code']
+            
+            if search_filters.get('reference'):
+                query["reference"] = {"$regex": search_filters['reference'], "$options": "i"}
+            
+            if search_filters.get('entry_number'):
+                query["entry_number"] = {"$regex": search_filters['entry_number'], "$options": "i"}
         
         # Obtener todas las entradas del ledger
         ledger_entries = await collection.find(query).sort("date", 1).to_list(1000)
@@ -514,6 +551,8 @@ class LedgerService:
                     account_name=account.name,
                     account_type=account.account_type.value,
                     nature=account.nature.value,
+                    parent_code=account.parent_code,
+                    level=account.level,
                     initial_debit_balance=account.initial_debit_balance,
                     initial_credit_balance=account.initial_credit_balance,
                     current_debit_balance=account.current_debit_balance,
@@ -532,6 +571,58 @@ class LedgerService:
                 print(f"Error al obtener mayor de cuenta {account.code}: {e}")
                 continue
 
+        # Aplicar filtros de saldo y movimientos
+        if search_filters:
+            filtered_ledgers = []
+            for ledger in ledgers:
+                include = True
+                
+                # Filtro por saldo
+                if search_filters.get('min_balance') is not None:
+                    if ledger.net_balance < search_filters['min_balance']:
+                        include = False
+                
+                if search_filters.get('max_balance') is not None:
+                    if ledger.net_balance > search_filters['max_balance']:
+                        include = False
+                
+                if search_filters.get('exact_balance') is not None:
+                    if abs(ledger.net_balance - search_filters['exact_balance']) > 0.01:  # Tolerancia para decimales
+                        include = False
+                
+                # Filtro por movimientos
+                if search_filters.get('min_movements') is not None:
+                    if ledger.entry_count < search_filters['min_movements']:
+                        include = False
+                
+                if search_filters.get('max_movements') is not None:
+                    if ledger.entry_count > search_filters['max_movements']:
+                        include = False
+                
+                if search_filters.get('exact_movements') is not None:
+                    if ledger.entry_count != search_filters['exact_movements']:
+                        include = False
+                
+                # Filtro por valor (suma de débitos y créditos)
+                total_value = ledger.total_debits + ledger.total_credits
+                if search_filters.get('min_value') is not None:
+                    if total_value < search_filters['min_value']:
+                        include = False
+                
+                if search_filters.get('max_value') is not None:
+                    if total_value > search_filters['max_value']:
+                        include = False
+                
+                if search_filters.get('exact_value') is not None:
+                    if abs(total_value - search_filters['exact_value']) > 0.01:  # Tolerancia para decimales
+                        include = False
+                
+                if include:
+                    filtered_ledgers.append(ledger)
+            
+            ledgers = filtered_ledgers
+
+        print(f"✅ Mayor general generado: {len(ledgers)} cuentas")
         return ledgers
 
     @staticmethod

@@ -1,13 +1,16 @@
 <template>
-  <div id="app">
+  <div id="app" class="d-flex flex-column min-vh-100">
     <Navbar v-if="isAuthenticated" />
-    <Sidebar v-if="isAuthenticated" />
-    
-    <main :class="{ 'with-sidebar': isAuthenticated }">
-      <router-view />
-    </main>
-    
-    <Footer v-if="isAuthenticated" />
+    <div class="d-flex flex-grow-1">
+      <Sidebar v-if="isAuthenticated" />
+      
+      <main :class="{ 'with-sidebar': isAuthenticated }" class="flex-grow-1">
+        <div class="content-wrapper">
+          <router-view />
+        </div>
+        <Footer v-if="isAuthenticated" />
+      </main>
+    </div>
   </div>
 </template>
 
@@ -41,13 +44,33 @@ export default {
 .with-sidebar {
   margin-left: 250px;
   padding-top: 70px;
+  transition: margin-left 0.3s ease;
+}
+
+/* Cuando el sidebar está colapsado */
+body.sidebar-collapsed .with-sidebar {
+  margin-left: 70px;
 }
 
 main {
-  min-height: calc(100vh - 70px);
+  min-height: 100vh;
   padding: 20px;
+  padding-bottom: 0;
+}
+
+.content-wrapper {
+  min-height: calc(100vh - 70px - 40px); /* Altura total - navbar - padding */
+  padding-bottom: 2rem;
+}
+
+/* Asegurar que el contenido no se superponga con el footer */
+#app {
+  min-height: 100vh;
 }
 </style>
+
+
+
 
 
 

@@ -100,8 +100,8 @@ export default {
     const currentCompany = computed(() => companyStore.currentCompany)
 
     const toggleSidebar = () => {
-      // Toggle sidebar functionality
-      document.body.classList.toggle('sidebar-toggled')
+      // Emitir evento personalizado para el sidebar
+      document.dispatchEvent(new CustomEvent('toggle-sidebar'))
     }
 
     const selectCompany = async (company) => {

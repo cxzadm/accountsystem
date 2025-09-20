@@ -14,6 +14,24 @@ async def get_general_ledger(
     company_id: str = Query(..., description="ID de la empresa"),
     start_date: Optional[str] = Query(None, description="Fecha inicio (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="Fecha fin (YYYY-MM-DD)"),
+    # Parámetros de búsqueda inteligente
+    search: Optional[str] = Query(None, description="Búsqueda general"),
+    description: Optional[str] = Query(None, description="Buscar en descripción"),
+    min_balance: Optional[float] = Query(None, description="Saldo mínimo"),
+    max_balance: Optional[float] = Query(None, description="Saldo máximo"),
+    exact_balance: Optional[float] = Query(None, description="Saldo exacto"),
+    level: Optional[int] = Query(None, description="Nivel de cuenta"),
+    nature: Optional[str] = Query(None, description="Naturaleza de cuenta"),
+    parent_code: Optional[str] = Query(None, description="Código de cuenta padre"),
+    document_type_code: Optional[str] = Query(None, description="Código de tipo de documento"),
+    reference: Optional[str] = Query(None, description="Referencia"),
+    entry_number: Optional[str] = Query(None, description="Número de asiento"),
+    min_movements: Optional[int] = Query(None, description="Movimientos mínimos"),
+    max_movements: Optional[int] = Query(None, description="Movimientos máximos"),
+    exact_movements: Optional[int] = Query(None, description="Movimientos exactos"),
+    min_value: Optional[float] = Query(None, description="Valor mínimo"),
+    max_value: Optional[float] = Query(None, description="Valor máximo"),
+    exact_value: Optional[float] = Query(None, description="Valor exacto"),
     current_user: User = Depends(require_permission("reports:read"))
 ):
     """Obtener el mayor general de todas las cuentas"""
@@ -47,10 +65,8 @@ async def get_general_ledger(
             )
     
     try:
-        # SOLUCIÓN ALTERNATIVA: Usar exactamente el mismo endpoint que el Plan de Cuentas
-        # pero adaptado para el formato del Mayor General
-        
-        # 1. Ejecutar cálculo automático de saldos padre (misma lógica que Plan de Cuentas)
+        # Usar exactamente la misma lógica que el Plan de Cuentas
+        # Ejecutar el endpoint fix-complete-hierarchy que funciona correctamente
         try:
             print(f"🔄 Ejecutando cálculo automático de saldos padre para Mayor General (misma lógica que Plan de Cuentas)...")
             result = await LedgerService._fix_complete_hierarchy_internal(company_id)
@@ -59,72 +75,45 @@ async def get_general_ledger(
             print(f"⚠️ Error en cálculo automático de saldos padre: {calc_error}")
             # No interrumpir la carga si falla el cálculo automático
         
-        # 2. Obtener las cuentas usando exactamente la misma lógica que /accounts
-        from app.models.account import Account
-        accounts = await Account.find(
-            Account.company_id == company_id,
-            Account.is_active == True
-        ).to_list()
+        # Ahora obtener el mayor general con los saldos ya calculados
+        # Crear diccionario de filtros de búsqueda inteligente
+        search_filters = {}
+        if search:
+            search_filters['search'] = search
+        if description:
+            search_filters['description'] = description
+        if min_balance is not None:
+            search_filters['min_balance'] = min_balance
+        if max_balance is not None:
+            search_filters['max_balance'] = max_balance
+        if exact_balance is not None:
+            search_filters['exact_balance'] = exact_balance
+        if level is not None:
+            search_filters['level'] = level
+        if nature:
+            search_filters['nature'] = nature
+        if parent_code:
+            search_filters['parent_code'] = parent_code
+        if document_type_code:
+            search_filters['document_type_code'] = document_type_code
+        if reference:
+            search_filters['reference'] = reference
+        if entry_number:
+            search_filters['entry_number'] = entry_number
+        if min_movements is not None:
+            search_filters['min_movements'] = min_movements
+        if max_movements is not None:
+            search_filters['max_movements'] = max_movements
+        if exact_movements is not None:
+            search_filters['exact_movements'] = exact_movements
+        if min_value is not None:
+            search_filters['min_value'] = min_value
+        if max_value is not None:
+            search_filters['max_value'] = max_value
+        if exact_value is not None:
+            search_filters['exact_value'] = exact_value
         
-        print(f"📊 Cuentas obtenidas con misma lógica que Plan de Cuentas: {len(accounts)}")
-        
-        # 3. Convertir a formato AccountLedgerSummary para mantener compatibilidad
-        ledgers = []
-        for account in accounts:
-            # Calcular totales de movimientos si se especifican fechas
-            total_debits = 0
-            total_credits = 0
-            entry_count = 0
-            
-            if start_dt or end_dt:
-                # Solo calcular movimientos si se especifican fechas
-                from motor.motor_asyncio import AsyncIOMotorClient
-                from app.config import settings
-                
-                client = AsyncIOMotorClient(settings.mongodb_url)
-                database = client[settings.database_name]
-                collection = database.ledger_entries
-                
-                query = {"company_id": company_id, "account_id": str(account.id)}
-                if start_dt:
-                    query["date"] = {"$gte": start_dt}
-                if end_dt:
-                    from datetime import timedelta
-                    inclusive_end = end_dt + timedelta(days=1)
-                    if "date" in query:
-                        query["date"]["$lt"] = inclusive_end
-                    else:
-                        query["date"] = {"$lt": inclusive_end}
-                
-                entries = await collection.find(query).to_list(1000)
-                total_debits = sum(entry["debit_amount"] for entry in entries)
-                total_credits = sum(entry["credit_amount"] for entry in entries)
-                entry_count = len(entries)
-                
-                client.close()
-            
-            # Crear AccountLedgerSummary usando los datos de la cuenta (misma fuente que Plan de Cuentas)
-            ledger_summary = AccountLedgerSummary(
-                account_id=str(account.id),
-                account_code=account.code,
-                account_name=account.name,
-                account_type=account.account_type.value,
-                nature=account.nature.value,
-                initial_debit_balance=account.initial_debit_balance,
-                initial_credit_balance=account.initial_credit_balance,
-                current_debit_balance=account.current_debit_balance,  # Misma fuente que Plan de Cuentas
-                current_credit_balance=account.current_credit_balance,  # Misma fuente que Plan de Cuentas
-                net_balance=account.current_debit_balance - account.current_credit_balance,
-                total_debits=total_debits,
-                total_credits=total_credits,
-                entry_count=entry_count,
-                last_transaction_date=account.last_transaction_date,
-                entries=[]
-            )
-            
-            ledgers.append(ledger_summary)
-        
-        print(f"✅ Mayor General creado con misma fuente de datos que Plan de Cuentas")
+        ledgers = await LedgerService.get_general_ledger(company_id, start_dt, end_dt, search_filters)
         return ledgers
     except Exception as e:
         raise HTTPException(
@@ -379,10 +368,8 @@ async def get_ledger_summary(
         )
     
     try:
-        # SOLUCIÓN ALTERNATIVA: Usar exactamente el mismo endpoint que el Plan de Cuentas
-        # pero adaptado para el formato del resumen del Mayor General
-        
-        # 1. Ejecutar cálculo automático de saldos padre (misma lógica que Plan de Cuentas)
+        # Usar exactamente la misma lógica que el Plan de Cuentas
+        # Ejecutar el endpoint fix-complete-hierarchy que funciona correctamente
         try:
             print(f"🔄 Ejecutando cálculo automático de saldos padre para resumen del Mayor General (misma lógica que Plan de Cuentas)...")
             result = await LedgerService._fix_complete_hierarchy_internal(company_id)
@@ -391,40 +378,8 @@ async def get_ledger_summary(
             print(f"⚠️ Error en cálculo automático de saldos padre: {calc_error}")
             # No interrumpir la carga si falla el cálculo automático
         
-        # 2. Obtener las cuentas usando exactamente la misma lógica que /accounts
-        from app.models.account import Account
-        accounts = await Account.find(
-            Account.company_id == company_id,
-            Account.is_active == True
-        ).to_list()
-        
-        print(f"📊 Cuentas obtenidas con misma lógica que Plan de Cuentas: {len(accounts)}")
-        
-        # 3. Convertir a formato AccountLedgerSummary para mantener compatibilidad
-        ledgers = []
-        for account in accounts:
-            # Crear AccountLedgerSummary usando los datos de la cuenta (misma fuente que Plan de Cuentas)
-            ledger_summary = AccountLedgerSummary(
-                account_id=str(account.id),
-                account_code=account.code,
-                account_name=account.name,
-                account_type=account.account_type.value,
-                nature=account.nature.value,
-                initial_debit_balance=account.initial_debit_balance,
-                initial_credit_balance=account.initial_credit_balance,
-                current_debit_balance=account.current_debit_balance,  # Misma fuente que Plan de Cuentas
-                current_credit_balance=account.current_credit_balance,  # Misma fuente que Plan de Cuentas
-                net_balance=account.current_debit_balance - account.current_credit_balance,
-                total_debits=0,  # No calcular movimientos para el resumen
-                total_credits=0,
-                entry_count=0,
-                last_transaction_date=account.last_transaction_date,
-                entries=[]
-            )
-            
-            ledgers.append(ledger_summary)
-        
-        print(f"✅ Resumen del Mayor General creado con misma fuente de datos que Plan de Cuentas")
+        # Ahora obtener el resumen con los saldos ya calculados
+        ledgers = await LedgerService.get_general_ledger(company_id)
         
         # Calcular totales generales
         total_debits = sum(ledger.total_debits for ledger in ledgers)

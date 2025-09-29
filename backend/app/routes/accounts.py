@@ -8,6 +8,47 @@ from bson import ObjectId
 
 router = APIRouter()
 
+# Utilidades para derivar jerarquía a partir del código
+def _derive_parent_and_level_from_code(account_code: str):
+    code = (account_code or "").strip()
+    if not code:
+        return None, 1
+    length = len(code)
+    # Nivel por longitudes típicas (1,3,5,7,9) o genérico
+    if length == 1:
+        level = 1
+        parent = None
+    elif length == 3:
+        level = 2
+        parent = code[:1]
+    elif length == 5:
+        level = 3
+        parent = code[:3]
+    elif length == 7:
+        level = 4
+        parent = code[:5]
+    elif length == 9:
+        level = 5
+        parent = code[:7]
+    else:
+        # Regla general: cada 2 dígitos aumenta un nivel; padre = quitar 2 dígitos
+        level = max(1, (length + 1) // 2)
+        parent = code[:-2] if length > 1 else None
+    return parent or None, level
+
+def _should_override_level(provided_level: int | None, account_code: str) -> bool:
+    code_len = len((account_code or "").strip())
+    if provided_level is None or provided_level == 0:
+        return True
+    # Si viene 1 pero el código sugiere nivel > 1, sobreescribir
+    if provided_level == 1 and code_len > 1:
+        return True
+    return False
+
+def _clean_parent_code(parent_code: str | None) -> str | None:
+    parent = (parent_code or "").strip()
+    return parent if parent else None
+
 @router.get("/", response_model=List[AccountResponse])
 async def get_accounts(
     company_id: str = Query(..., description="ID de la empresa"),
@@ -134,7 +175,13 @@ async def get_accounts(
         # Se podrían implementar con agregación de MongoDB
         pass
     
-    accounts = await Account.find(query).skip(skip).limit(limit).to_list()
+    accounts = await Account.find(query).to_list()
+    
+    # Ordenar jerárquicamente
+    accounts = _sort_accounts_hierarchically(accounts)
+    
+    # Aplicar paginación después del ordenamiento
+    accounts = accounts[skip:skip + limit]
     
     return [
         AccountResponse(
@@ -189,17 +236,81 @@ async def update_initial_balances(
                 )
 
                 if not account:
-                    errors.append(f"Cuenta {balance_data.account_code} no encontrada")
+                    # Crear la cuenta si no existe cuando se gestiona desde Saldos Iniciales
+                    derived_parent, derived_level = _derive_parent_and_level_from_code(balance_data.account_code)
+                    new_account = Account(
+                        code=balance_data.account_code,
+                        name=balance_data.name or f"Cuenta {balance_data.account_code}",
+                        description=balance_data.description,
+                        account_type=balance_data.account_type or AccountType.ACTIVO,
+                        nature=balance_data.nature or AccountNature.DEUDORA,
+                        parent_code=_clean_parent_code(balance_data.parent_code) if balance_data.parent_code is not None else derived_parent,
+                        level=(derived_level if _should_override_level(balance_data.level, balance_data.account_code) else balance_data.level),
+                        company_id=company_id,
+                        is_active=True,
+                        is_editable=balance_data.is_editable if balance_data.is_editable is not None else True,
+                        initial_debit_balance=debit,
+                        initial_credit_balance=credit,
+                        current_debit_balance=0.0,
+                        current_credit_balance=0.0,
+                        created_by=str(current_user.id),
+                        created_at=datetime.now(),
+                        updated_at=datetime.now()
+                    )
+                    await new_account.insert()
+                    updated_accounts.append(new_account.code)
+
+                    await log_audit(
+                        user=current_user,
+                        action=AuditAction.CREATE,
+                        module=AuditModule.ACCOUNTS,
+                        description=f"Cuenta creada desde Saldos Iniciales: {new_account.code}",
+                        resource_id=str(new_account.id),
+                        resource_type="account",
+                        new_values={
+                            "code": new_account.code,
+                            "name": new_account.name,
+                            "initial_debit_balance": new_account.initial_debit_balance,
+                            "initial_credit_balance": new_account.initial_credit_balance
+                        },
+                        ip_address=request.client.host,
+                        user_agent=request.headers.get("user-agent", "Unknown")
+                    )
                     continue
 
                 old_values = {
                     "initial_debit_balance": account.initial_debit_balance,
-                    "initial_credit_balance": account.initial_credit_balance
+                    "initial_credit_balance": account.initial_credit_balance,
+                    "current_debit_balance": account.current_debit_balance,
+                    "current_credit_balance": account.current_credit_balance
                 }
 
+                # Actualizar saldos iniciales; NO tocar saldos corrientes (representan movimientos ya registrados)
                 account.initial_debit_balance = debit
                 account.initial_credit_balance = credit
                 account.updated_at = datetime.now()
+
+                # Campos complementarios si se envían
+                if balance_data.name:
+                    account.name = balance_data.name
+                if balance_data.account_type:
+                    account.account_type = balance_data.account_type
+                if balance_data.nature:
+                    account.nature = balance_data.nature
+                if balance_data.description is not None:
+                    account.description = balance_data.description
+                # Ajuste de jerarquía: usar explícitos si vienen válidos, sino derivar de código
+                derived_parent, derived_level = _derive_parent_and_level_from_code(balance_data.account_code)
+                if balance_data.parent_code is not None:
+                    account.parent_code = _clean_parent_code(balance_data.parent_code)
+                else:
+                    account.parent_code = derived_parent
+                if _should_override_level(balance_data.level, balance_data.account_code):
+                    account.level = derived_level
+                else:
+                    account.level = balance_data.level
+                if balance_data.is_editable is not None:
+                    account.is_editable = balance_data.is_editable
 
                 await account.save()
                 updated_accounts.append(account.code)
@@ -317,6 +428,19 @@ async def create_account(
             detail="Ya existe una cuenta con este código en esta empresa"
         )
     
+    # Derivar jerarquía si no viene
+    derived_parent, derived_level = _derive_parent_and_level_from_code(account_data.code)
+    parent_code = account_data.parent_code if account_data.parent_code is not None else derived_parent
+    
+    # Usar nivel derivado si no se proporciona o si el proporcionado es 1 pero el código sugiere un nivel más alto
+    if account_data.level is None or account_data.level == 1:
+        level = derived_level
+    elif account_data.level < derived_level:
+        # Si el nivel proporcionado es menor al derivado, usar el derivado
+        level = derived_level
+    else:
+        level = account_data.level
+
     # Crear nueva cuenta
     new_account = Account(
         code=account_data.code,
@@ -324,8 +448,8 @@ async def create_account(
         description=account_data.description,
         account_type=account_data.account_type,
         nature=account_data.nature,
-        parent_code=account_data.parent_code,
-        level=account_data.level,
+        parent_code=parent_code,
+        level=level,
         company_id=company_id,
         is_editable=account_data.is_editable,
         initial_debit_balance=account_data.initial_debit_balance,
@@ -423,8 +547,27 @@ async def update_account(
     # Actualizar campos
     update_data = account_update.dict(exclude_unset=True)
     
+    # Si se está cambiando el parent_code o el código, recalcular jerarquía
+    if 'parent_code' in update_data or 'code' in update_data:
+        # Derivar jerarquía basada en el código actualizado
+        derived_parent, derived_level = _derive_parent_and_level_from_code(update_data.get('code', account.code))
+        
+        # Usar el parent_code proporcionado o el derivado
+        if 'parent_code' in update_data:
+            parent_code = update_data['parent_code'] if update_data['parent_code'] else derived_parent
+        else:
+            parent_code = derived_parent
+            
+        # Usar el nivel derivado
+        level = derived_level
+        
+        # Actualizar jerarquía
+        account.parent_code = parent_code
+        account.level = level
+    
     for field, value in update_data.items():
-        setattr(account, field, value)
+        if field not in ['parent_code', 'level']:  # Ya manejados arriba
+            setattr(account, field, value)
     
     account.updated_at = datetime.now()
     await account.save()
@@ -518,13 +661,86 @@ async def toggle_account_status(
         "is_active": account.is_active
     }
 
+@router.delete("/purge")
+async def purge_company_accounts(
+    request: Request,
+    company_id: str = Query(..., description="ID de la empresa"),
+    force: bool = Query(False, description="Eliminar también asientos y mayor para evitar referencias"),
+    current_user: User = Depends(require_permission("accounts:delete"))
+):
+    """Eliminar TODAS las cuentas contables de una empresa (operación destructiva)."""
+    # Verificar acceso
+    if current_user.role != "admin" and company_id not in current_user.companies:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes acceso a esta empresa"
+        )
+
+    try:
+        # Usar la colección de Beanie para eliminar masivamente sin dependencias adicionales
+        accounts_collection = Account.get_motor_collection()
+        database = accounts_collection.database
+
+        deleted_journal = 0
+        deleted_ledger = 0
+        if force:
+            # Borrar asientos y mayor de la empresa para evitar referencias
+            try:
+                jr = await database.journal_entries.delete_many({"company_id": company_id})
+                deleted_journal = getattr(jr, "deleted_count", 0)
+            except Exception:
+                deleted_journal = 0
+            try:
+                lr = await database.ledger_entries.delete_many({"company_id": company_id})
+                deleted_ledger = getattr(lr, "deleted_count", 0)
+            except Exception:
+                deleted_ledger = 0
+
+        result = await accounts_collection.delete_many({"company_id": company_id})
+        deleted_count = getattr(result, "deleted_count", 0)
+
+        # Log de auditoría (no fallar si el log falla)
+        try:
+            await log_audit(
+                user=current_user,
+                action=AuditAction.DELETE,
+                module=AuditModule.ACCOUNTS,
+                description=f"Purgado total de cuentas para empresa {company_id}",
+                resource_id=company_id,
+                resource_type="company",
+                old_values=None,
+                new_values={
+                    "deleted_accounts": deleted_count,
+                    "deleted_journal_entries": deleted_journal,
+                    "deleted_ledger_entries": deleted_ledger,
+                    "force": force
+                },
+                ip_address=request.client.host if request.client else None,
+                user_agent=request.headers.get("user-agent", "Unknown")
+            )
+        except Exception:
+            pass
+
+        return {
+            "message": "Purgado completado",
+            "deleted_accounts": deleted_count,
+            "deleted_journal_entries": deleted_journal,
+            "deleted_ledger_entries": deleted_ledger,
+            "force": force
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al eliminar cuentas: {str(e)}"
+        )
+
 @router.delete("/{account_id}")
 async def delete_account(
     account_id: str,
     request: Request,
     current_user: User = Depends(require_permission("accounts:delete"))
 ):
-    """Eliminar cuenta contable (soft delete)"""
+    """Eliminar cuenta contable definitivamente"""
     account = await Account.get(account_id)
     if not account:
         raise HTTPException(
@@ -546,26 +762,29 @@ async def delete_account(
             detail="Esta cuenta no puede ser eliminada"
         )
     
-    # Soft delete - cambiar is_active a False
-    account.is_active = False
-    account.updated_at = datetime.now()
-    await account.save()
+    # Hard delete - eliminar definitivamente la cuenta
+    account_code = account.code
+    account_name = account.name
+    company_id = account.company_id
+    
+    # Eliminar la cuenta de la base de datos
+    await account.delete()
     
     # Log de auditoría
     await log_audit(
         user=current_user,
         action=AuditAction.DELETE,
         module=AuditModule.ACCOUNTS,
-        description=f"Cuenta contable eliminada: {account.code} - {account.name}",
-        resource_id=str(account.id),
+        description=f"Cuenta contable eliminada definitivamente: {account_code} - {account_name}",
+        resource_id=account_id,
         resource_type="account",
-        old_values={"is_active": True},
-        new_values={"is_active": False},
+        old_values={"code": account_code, "name": account_name, "company_id": company_id},
+        new_values={},
         ip_address=request.client.host,
         user_agent=request.headers.get("user-agent", "Unknown")
     )
     
-    return {"message": "Cuenta contable eliminada exitosamente"}
+    return {"message": "Cuenta contable eliminada definitivamente"}
 
 @router.get("/export-chart", response_model=List[ChartOfAccountsExport])
 async def export_chart_of_accounts(
@@ -584,7 +803,10 @@ async def export_chart_of_accounts(
         accounts = await Account.find(
             Account.company_id == company_id,
             Account.is_active == True
-        ).sort("code").to_list()
+        ).to_list()
+        
+        # Ordenar jerárquicamente
+        accounts = _sort_accounts_hierarchically(accounts)
         
         return [
             ChartOfAccountsExport(
@@ -632,21 +854,22 @@ async def import_initial_balances(
             
             if not account:
                 # Crear nueva cuenta si no existe
+                derived_parent, derived_level = _derive_parent_and_level_from_code(balance_data.account_code)
                 new_account = Account(
                     code=balance_data.account_code,
                     name=balance_data.name or f"Cuenta {balance_data.account_code}",
                     description=balance_data.description,
                     account_type=balance_data.account_type or AccountType.ACTIVO,
                     nature=balance_data.nature or AccountNature.DEUDORA,
-                    parent_code=balance_data.parent_code,
-                    level=balance_data.level or 1,
+                    parent_code=_clean_parent_code(balance_data.parent_code) if balance_data.parent_code is not None else derived_parent,
+                    level=(derived_level if _should_override_level(balance_data.level, balance_data.account_code) else balance_data.level),
                     company_id=company_id,
                     is_active=True,
                     is_editable=balance_data.is_editable or True,
                     initial_debit_balance=balance_data.initial_debit_balance or 0.0,
                     initial_credit_balance=balance_data.initial_credit_balance or 0.0,
-                    current_debit_balance=balance_data.initial_debit_balance or 0.0,
-                    current_credit_balance=balance_data.initial_credit_balance or 0.0,
+                    current_debit_balance=0.0,
+                    current_credit_balance=0.0,
                     created_by=str(current_user.id),
                     created_at=datetime.now(),
                     updated_at=datetime.now()
@@ -676,8 +899,8 @@ async def import_initial_balances(
                 old_credit = account.initial_credit_balance
                 account.initial_debit_balance = balance_data.initial_debit_balance or 0.0
                 account.initial_credit_balance = balance_data.initial_credit_balance or 0.0
-                account.current_debit_balance = balance_data.initial_debit_balance or 0.0
-                account.current_credit_balance = balance_data.initial_credit_balance or 0.0
+                account.current_debit_balance = 0.0
+                account.current_credit_balance = 0.0
                 account.updated_at = datetime.now()
                 if balance_data.name:
                     account.name = balance_data.name
@@ -687,6 +910,16 @@ async def import_initial_balances(
                     account.nature = balance_data.nature
                 if balance_data.description is not None:
                     account.description = balance_data.description
+                if balance_data.parent_code is not None or balance_data.level is not None:
+                    if balance_data.parent_code is not None:
+                        account.parent_code = balance_data.parent_code
+                    if balance_data.level is not None:
+                        account.level = balance_data.level
+                else:
+                    derived_parent, derived_level = _derive_parent_and_level_from_code(balance_data.account_code)
+                    if derived_parent is not None:
+                        account.parent_code = derived_parent
+                    account.level = derived_level
                 await account.save()
                 updated_accounts.append(account.code)
                 
@@ -737,7 +970,10 @@ async def import_initial_balances(
     all_accounts = await Account.find(
         Account.company_id == company_id,
         Account.is_active == True
-    ).sort("code").to_list()
+    ).to_list()
+    
+    # Ordenar jerárquicamente
+    all_accounts = _sort_accounts_hierarchically(all_accounts)
 
     accounts_response = [
         AccountResponse(
@@ -992,4 +1228,128 @@ async def fix_complete_hierarchy(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al corregir jerarquía: {str(e)}"
         )
+
+
+@router.post("/fix-levels")
+async def fix_account_levels(
+    company_id: str = Query(..., description="ID de la empresa"),
+    current_user: User = Depends(require_permission("accounts:update"))
+):
+    """Corregir niveles de todas las cuentas basándose en sus códigos"""
+    try:
+        if current_user.role != "admin" and company_id not in current_user.companies:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes acceso a esta empresa"
+            )
+        
+        # Obtener todas las cuentas de la empresa
+        accounts = await Account.find(
+            Account.company_id == company_id,
+            Account.is_active == True
+        ).to_list()
+        
+        updated_count = 0
+        corrections = []
+        
+        for account in accounts:
+            # Calcular nivel correcto basado en el código
+            derived_parent, derived_level = _derive_parent_and_level_from_code(account.code)
+            
+            # Si el nivel actual es incorrecto, corregirlo
+            if account.level != derived_level:
+                old_level = account.level
+                account.level = derived_level
+                
+                # También corregir el parent_code si es necesario
+                if account.parent_code != derived_parent:
+                    account.parent_code = derived_parent
+                
+                await account.save()
+                updated_count += 1
+                corrections.append({
+                    "code": account.code,
+                    "name": account.name,
+                    "old_level": old_level,
+                    "new_level": derived_level,
+                    "old_parent": account.parent_code,
+                    "new_parent": derived_parent
+                })
+        
+        # Log de auditoría
+        await log_audit(
+            user=current_user,
+            action=AuditAction.UPDATE,
+            module=AuditModule.ACCOUNTS,
+            description=f"Niveles de cuentas corregidos: {updated_count} cuentas actualizadas",
+            resource_id=company_id,
+            resource_type="company",
+            new_values={"updated_accounts": updated_count, "corrections": corrections},
+            ip_address=request.client.host,
+            user_agent=request.headers.get("user-agent", "Unknown")
+        )
+        
+        return {
+            "message": f"Niveles corregidos: {updated_count} cuentas actualizadas",
+            "updated_count": updated_count,
+            "corrections": corrections
+        }
+        
+    except Exception as e:
+        print(f"Error al corregir niveles: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al corregir niveles: {str(e)}"
+        )
+
+
+def _sort_accounts_hierarchically(accounts):
+    """
+    Ordena las cuentas jerárquicamente respetando la estructura padre-hijo.
+    Las cuentas se ordenan por nivel y luego por código dentro de cada nivel.
+    """
+    if not accounts:
+        return []
+    
+    # Crear un diccionario para acceso rápido por código
+    account_dict = {acc.code: acc for acc in accounts}
+    
+    # Función para obtener el orden jerárquico de una cuenta
+    def get_hierarchical_order(account):
+        # Si no tiene padre, es de nivel 1
+        if not account.parent_code:
+            return [account.code]
+        
+        # Construir la ruta completa desde la raíz
+        path = []
+        current_code = account.code
+        
+        # Recorrer hacia arriba hasta encontrar la raíz
+        while current_code in account_dict:
+            current_account = account_dict[current_code]
+            path.insert(0, current_code)
+            
+            if not current_account.parent_code:
+                break
+            current_code = current_account.parent_code
+        
+        return path
+    
+    # Ordenar las cuentas jerárquicamente
+    def sort_key(account):
+        hierarchical_path = get_hierarchical_order(account)
+        # Convertir cada código en una tupla de números para ordenamiento natural
+        path_numbers = []
+        for code in hierarchical_path:
+            # Convertir código a números para ordenamiento natural
+            # Ej: "3010101" -> (3, 1, 1, 1)
+            numbers = []
+            for char in code:
+                if char.isdigit():
+                    numbers.append(int(char))
+            path_numbers.append(tuple(numbers))
+        
+        return path_numbers
+    
+    return sorted(accounts, key=sort_key)
 

@@ -40,12 +40,7 @@ class User(Document):
     
     class Settings:
         name = "users"
-        indexes = [
-            "username",
-            "email",
-            "role",
-            "status"
-        ]
+        indexes = []
 
 class UserCreate(BaseModel):
     username: str

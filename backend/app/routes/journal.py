@@ -63,6 +63,7 @@ async def get_journal_entries(
             total_credit=entry.total_credit,
             company_id=entry.company_id,
             created_by=entry.created_by,
+            responsable=getattr(entry, "responsable", None),
             approved_by=entry.approved_by,
             approved_at=entry.approved_at,
             created_at=entry.created_at,
@@ -105,6 +106,7 @@ async def get_journal_entry(
         total_credit=entry.total_credit,
         company_id=entry.company_id,
         created_by=entry.created_by,
+        responsable=getattr(entry, "responsable", None),
         approved_by=entry.approved_by,
         approved_at=entry.approved_at,
         created_at=entry.created_at,
@@ -119,6 +121,12 @@ async def create_journal_entry(
     current_user: User = Depends(require_permission("journal:create"))
 ):
     """Crear nuevo asiento contable"""
+    print(f"🚀 CREANDO ASIENTO - Número: {entry_data.entry_number}")
+    print(f"📋 Descripción: {entry_data.description}")
+    print(f"👨‍💼 Responsable: {entry_data.responsable}")
+    print(f"🏢 Empresa: {company_id}")
+    print(f"👤 Usuario: {current_user.first_name} {current_user.last_name}")
+    
     # Verificar que el usuario tenga acceso a esta empresa
     if current_user.role != "admin" and company_id not in current_user.companies:
         raise HTTPException(
@@ -166,10 +174,14 @@ async def create_journal_entry(
         total_debit=total_debit,
         total_credit=total_credit,
         company_id=company_id,
-        created_by=str(current_user.id)
+        created_by=str(current_user.id),
+        responsable=entry_data.responsable or f"{current_user.first_name} {current_user.last_name}"
     )
     
     await new_entry.insert()
+    print(f"✅ ASIENTO CREADO EXITOSAMENTE - ID: {new_entry.id}")
+    print(f"📋 Número: {new_entry.entry_number}")
+    print(f"👨‍💼 Responsable: {new_entry.responsable}")
 
     # Marcar reserva como usada si existe
     try:
@@ -219,6 +231,7 @@ async def create_journal_entry(
         total_credit=new_entry.total_credit,
         company_id=new_entry.company_id,
         created_by=new_entry.created_by,
+        responsable=new_entry.responsable,
         approved_by=new_entry.approved_by,
         approved_at=new_entry.approved_at,
         created_at=new_entry.created_at,
@@ -317,6 +330,7 @@ async def update_journal_entry(
         total_credit=entry.total_credit,
         company_id=entry.company_id,
         created_by=entry.created_by,
+        responsable=getattr(entry, "responsable", None),
         approved_by=entry.approved_by,
         approved_at=entry.approved_at,
         created_at=entry.created_at,
@@ -396,6 +410,7 @@ async def approve_journal_entry(
         total_credit=entry.total_credit,
         company_id=entry.company_id,
         created_by=entry.created_by,
+        responsable=getattr(entry, "responsable", None),
         approved_by=entry.approved_by,
         approved_at=entry.approved_at,
         created_at=entry.created_at,
@@ -459,31 +474,57 @@ async def post_journal_entry(
     current_user: User = Depends(require_permission("journal:approve"))
 ):
     """Mayorizar un asiento contable (aplicar a las cuentas)"""
-    entry = await JournalEntry.get(entry_id)
-    if not entry:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Asiento contable no encontrado"
+    try:
+        print(f"🚀 Iniciando mayorización de asiento: {entry_id}")
+        
+        entry = await JournalEntry.get(entry_id)
+        if not entry:
+            print(f"❌ Asiento no encontrado: {entry_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Asiento contable no encontrado"
+            )
+        
+        print(f"📋 Asiento encontrado: {entry.entry_number}, Estado: {entry.status}")
+        
+        # Verificar que el asiento esté en estado DRAFT
+        if entry.status != "draft":
+            print(f"❌ Asiento no está en estado DRAFT: {entry.status}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Solo se pueden mayorizar asientos en estado DRAFT"
+            )
+        
+        print(f"✅ Asiento válido para mayorización. Iniciando proceso...")
+        
+        # Mayorizar el asiento
+        success = await LedgerService.post_journal_entry(
+            entry, 
+            entry.company_id, 
+            str(current_user.id)
         )
-    
-    # Verificar que el asiento esté en estado DRAFT
-    if entry.status != "draft":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Solo se pueden mayorizar asientos en estado DRAFT"
-        )
-    
-    # Mayorizar el asiento
-    success = await LedgerService.post_journal_entry(
-        entry, 
-        entry.company_id, 
-        str(current_user.id)
-    )
-    
-    if not success:
+        
+        print(f"📊 Resultado de mayorización: {success}")
+        
+        if not success:
+            print(f"❌ Error en la mayorización del asiento")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error al mayorizar el asiento"
+            )
+        
+        print(f"✅ Asiento mayorizado exitosamente")
+        
+    except HTTPException:
+        # Re-lanzar HTTPExceptions sin modificar
+        raise
+    except Exception as e:
+        print(f"❌ Error inesperado al mayorizar asiento: {e}")
+        import traceback
+        print(f"📋 Traceback completo: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al mayorizar el asiento"
+            detail=f"Error interno del servidor: {str(e)}"
         )
     
     # Log de auditoría
@@ -501,6 +542,10 @@ async def post_journal_entry(
     
     # Obtener el asiento actualizado
     updated_entry = await JournalEntry.get(entry_id)
+    responsable_value = getattr(updated_entry, 'responsable', None)
+    print(f"🔍 Asiento actualizado - Responsable: {responsable_value}")
+    print(f"🔍 Tipo de responsable: {type(responsable_value)}")
+    print(f"🔍 Es None: {responsable_value is None}")
     return JournalEntryResponse(
         id=str(updated_entry.id),
         entry_number=updated_entry.entry_number,
@@ -515,6 +560,7 @@ async def post_journal_entry(
         total_credit=updated_entry.total_credit,
         company_id=updated_entry.company_id,
         created_by=updated_entry.created_by,
+        responsable=responsable_value,
         approved_by=updated_entry.approved_by,
         approved_at=updated_entry.approved_at,
         created_at=updated_entry.created_at,
@@ -583,6 +629,7 @@ async def unpost_journal_entry(
         total_credit=entry.total_credit,
         company_id=entry.company_id,
         created_by=entry.created_by,
+        responsable=getattr(entry, "responsable", None),
         approved_by=entry.approved_by,
         approved_at=entry.approved_at,
         created_at=entry.created_at,
@@ -632,6 +679,7 @@ async def copy_journal_entry(
         total_credit=original_entry.total_credit,
         company_id=original_entry.company_id,
         created_by=str(current_user.id),
+        responsable=f"{current_user.first_name} {current_user.last_name}",
         status="draft"  # La copia siempre empieza en draft
     )
     

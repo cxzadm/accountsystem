@@ -21,14 +21,55 @@
           <i class="fas fa-plus me-2"></i>
           Nueva Cuenta
         </button>
-        <button
-          class="btn btn-outline-success me-2"
-          @click="exportToExcel"
-          :disabled="loading"
-        >
-          <i class="fas fa-file-excel me-2"></i>
-          Exportar Excel
-        </button>
+        <div class="d-inline-block position-relative me-2" ref="exportMenuRef">
+          <button
+            class="btn btn-outline-success"
+            @click.stop="toggleExportMenu"
+            :disabled="loading"
+          >
+            <i class="fas fa-file-excel me-2"></i>
+            Exportar
+            <i class="fas fa-caret-down ms-1"></i>
+          </button>
+          <div v-if="showExportMenu" class="export-menu shadow-sm">
+            <ul class="list-unstyled mb-0">
+              <li>
+                <button class="dropdown-item" @click.stop="onExportTemplate">Descargar plantilla</button>
+              </li>
+              <li>
+                <button class="dropdown-item" @click.stop="onExportLoaded">
+                  Descargar saldos cargados
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div class="d-inline-block position-relative me-2" ref="clearMenuRef">
+          <button
+            class="btn btn-outline-danger"
+            @click.stop="toggleClearMenu"
+            :disabled="loading || clearing"
+            title="Pone en 0 saldos iniciales"
+          >
+            <i class="fas fa-broom me-2"></i>
+            Limpiar
+            <i class="fas fa-caret-down ms-1"></i>
+          </button>
+          <div v-if="showClearMenu" class="export-menu shadow-sm">
+            <ul class="list-unstyled mb-0">
+              <li>
+                <button class="dropdown-item" @click.stop="clearBalancesVisible">
+                  Limpiar solo saldos visibles
+                </button>
+              </li>
+              <li>
+                <button class="dropdown-item text-danger" @click.stop="clearBalancesAll">
+                  Limpiar todo
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
         <button
           class="btn btn-outline-primary me-2"
           @click="showImportModal = true"
@@ -213,13 +254,31 @@
                   />
                 </td>
                 <td>
-                  <button
-                    class="btn btn-sm btn-outline-secondary"
-                    @click="clearAccountBalances(account)"
-                    title="Limpiar saldos"
-                  >
-                    <i class="fas fa-eraser"></i>
-                  </button>
+                  <div class="btn-group" role="group">
+                    <button
+                      class="btn btn-sm btn-outline-primary"
+                      @click="editAccount(account)"
+                      title="Editar cuenta"
+                      :disabled="!account.is_editable"
+                    >
+                      <i class="fas fa-edit"></i>
+                    </button>
+                    <button
+                      class="btn btn-sm btn-outline-secondary"
+                      @click="clearAccountBalances(account)"
+                      title="Limpiar saldos"
+                    >
+                      <i class="fas fa-eraser"></i>
+                    </button>
+                    <button
+                      class="btn btn-sm btn-outline-danger"
+                      @click="deleteAccount(account)"
+                      title="Eliminar cuenta"
+                      :disabled="!account.is_editable"
+                    >
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -363,220 +422,15 @@
       </div>
     </div>
 
-    <!-- Create Account Modal -->
-    <div
-      class="modal fade"
-      :class="{ show: showCreateAccountModal }"
-      :style="{ display: showCreateAccountModal ? 'block' : 'none' }"
-      tabindex="-1"
-    >
-      <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title">Nueva Cuenta Contable</h5>
-            <button
-              type="button"
-              class="btn-close"
-              @click="closeCreateAccountModal"
-            ></button>
-          </div>
-          <div class="modal-body">
-            <form @submit.prevent="createAccount">
-              <div class="row">
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="accountCode" class="form-label">Código de Cuenta *</label>
-                    <input
-                      type="text"
-                      class="form-control"
-                      id="accountCode"
-                      v-model="newAccount.code"
-                      placeholder="Ej: 1101"
-                      required
-                    />
-                    <div class="form-text">Código único de la cuenta contable</div>
-                  </div>
-                </div>
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="accountName" class="form-label">Nombre de Cuenta *</label>
-                    <input
-                      type="text"
-                      class="form-control"
-                      id="accountName"
-                      v-model="newAccount.name"
-                      placeholder="Ej: CAJA"
-                      required
-                    />
-                  </div>
-                </div>
-              </div>
-              
-              <div class="row">
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="accountType" class="form-label">Tipo de Cuenta *</label>
-                    <select class="form-select" id="accountType" v-model="newAccount.account_type" required>
-                      <option value="">Seleccionar tipo</option>
-                      <option value="activo">Activo</option>
-                      <option value="pasivo">Pasivo</option>
-                      <option value="patrimonio">Patrimonio</option>
-                      <option value="ingresos">Ingresos</option>
-                      <option value="gastos">Gastos</option>
-                      <option value="costos">Costos</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="accountNature" class="form-label">Naturaleza *</label>
-                    <select class="form-select" id="accountNature" v-model="newAccount.nature" required>
-                      <option value="">Seleccionar naturaleza</option>
-                      <option value="deudora">Deudora</option>
-                      <option value="acreedora">Acreedora</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div class="row">
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="parentCode" class="form-label">Código Padre</label>
-                    <select class="form-select" id="parentCode" v-model="newAccount.parent_code" @change="updateAccountLevel">
-                      <option value="">Seleccionar cuenta padre</option>
-                      <option 
-                        v-for="account in parentAccounts" 
-                        :key="account.id" 
-                        :value="account.code"
-                      >
-                        {{ account.code }} - {{ account.name }}
-                      </option>
-                    </select>
-                    <div class="form-text">Seleccione la cuenta padre para crear una cuenta hija</div>
-                  </div>
-                </div>
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="accountLevel" class="form-label">Nivel</label>
-                    <input
-                      type="number"
-                      class="form-control"
-                      id="accountLevel"
-                      v-model.number="newAccount.level"
-                      min="1"
-                      max="5"
-                      placeholder="1"
-                      readonly
-                    />
-                    <div class="form-text">Nivel calculado automáticamente</div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="row">
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="accountType" class="form-label">Tipo de Relación</label>
-                    <select class="form-select" id="accountType" v-model="newAccount.account_relationship_type">
-                      <option value="P">Padre (P)</option>
-                      <option value="H">Hija (H)</option>
-                    </select>
-                    <div class="form-text">Tipo de cuenta en la jerarquía</div>
-                  </div>
-                </div>
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="suggestedCode" class="form-label">Código Sugerido</label>
-                    <input
-                      type="text"
-                      class="form-control"
-                      id="suggestedCode"
-                      v-model="suggestedCode"
-                      readonly
-                    />
-                    <div class="form-text">Código sugerido basado en la jerarquía</div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="mb-3">
-                <label for="accountDescription" class="form-label">Descripción</label>
-                <textarea
-                  class="form-control"
-                  id="accountDescription"
-                  v-model="newAccount.description"
-                  rows="3"
-                  placeholder="Descripción detallada de la cuenta..."
-                ></textarea>
-              </div>
-
-              <div class="row">
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="initialDebit" class="form-label">Saldo Inicial Débito</label>
-                    <input
-                      type="number"
-                      class="form-control"
-                      id="initialDebit"
-                      v-model.number="newAccount.initial_debit_balance"
-                      step="0.01"
-                      min="0"
-                      placeholder="0.00"
-                    />
-                  </div>
-                </div>
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="initialCredit" class="form-label">Saldo Inicial Crédito</label>
-                    <input
-                      type="number"
-                      class="form-control"
-                      id="initialCredit"
-                      v-model.number="newAccount.initial_credit_balance"
-                      step="0.01"
-                      min="0"
-                      placeholder="0.00"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div class="form-check">
-                <input
-                  class="form-check-input"
-                  type="checkbox"
-                  id="isEditable"
-                  v-model="newAccount.is_editable"
-                />
-                <label class="form-check-label" for="isEditable">
-                  Cuenta editable
-                </label>
-                <div class="form-text">Permitir modificar esta cuenta en el futuro</div>
-              </div>
-            </form>
-          </div>
-          <div class="modal-footer">
-            <button
-              type="button"
-              class="btn btn-secondary"
-              @click="closeCreateAccountModal"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              class="btn btn-primary"
-              @click="createAccount"
-              :disabled="creatingAccount"
-            >
-              <span v-if="creatingAccount" class="spinner-border spinner-border-sm me-2"></span>
-              {{ creatingAccount ? 'Creando...' : 'Crear Cuenta' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- Account Form Modal -->
+    <AccountFormModal
+      :show="showCreateAccountModal"
+      :account="editingAccount"
+      :company-id="company?.id"
+      :all-accounts="accounts"
+      :on-save="handleSaveAccount"
+      @close="closeCreateAccountModal"
+    />
 
     <!-- Modal Backdrop -->
     <div
@@ -588,51 +442,45 @@
 </template>
 
 <script>
-import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useToast } from 'vue-toastification'
+import { alerts } from '@/services/alerts'
 import { useCompanyStore } from '@/stores/company'
+import { useBreadcrumb } from '@/composables/useBreadcrumb'
 import api from '@/services/api'
 import * as XLSX from 'xlsx'
+import AccountFormModal from '@/components/AccountFormModal.vue'
 
 export default {
   name: 'InitialBalances',
+  components: {
+    AccountFormModal
+  },
   setup() {
     const route = useRoute()
     const router = useRouter()
-    const toast = useToast()
+    
     const companyStore = useCompanyStore()
+    const { addBreadcrumb, clearBreadcrumbs } = useBreadcrumb()
 
     // State
     const loading = ref(false)
     const calculatingBalances = ref(false)
     const importing = ref(false)
-    const creatingAccount = ref(false)
     const accounts = ref([])
     const changedAccounts = ref(new Set())
+    const showExportMenu = ref(false)
+    const exportMenuRef = ref(null)
+    const showClearMenu = ref(false)
+    const clearMenuRef = ref(null)
+    const clearing = ref(false)
     const showImportModal = ref(false)
     const showCreateAccountModal = ref(false)
+    const editingAccount = ref(null)
     const importPreview = ref([])
     const uploadedFile = ref(null)
     const initialized = ref(false)
     const tableKey = ref(0)
-
-    // New account form
-    const newAccount = reactive({
-      code: '',
-      name: '',
-      description: '',
-      account_type: '',
-      nature: '',
-      parent_code: '',
-      level: 1,
-      account_relationship_type: 'H',
-      initial_debit_balance: 0,
-      initial_credit_balance: 0,
-      is_editable: true
-    })
-
-    const suggestedCode = ref('')
 
     // Filters
     const searchTerm = ref('')
@@ -733,6 +581,18 @@ export default {
       return changedAccounts.value.size > 0
     })
 
+    const hasAnyLoadedBalances = computed(() => {
+      const list = accounts.value || []
+      return list.some(acc => (acc.initial_debit_balance || 0) > 0 || (acc.initial_credit_balance || 0) > 0)
+    })
+
+    const hasLoadedBalancesVisible = computed(() => {
+      const source = (filteredAccounts.value && filteredAccounts.value.length > 0)
+        ? filteredAccounts.value
+        : (accounts.value || [])
+      return source.some(acc => (acc.initial_debit_balance || 0) > 0 || (acc.initial_credit_balance || 0) > 0)
+    })
+
     // Computed for parent accounts (can have children)
     const parentAccounts = computed(() => {
       if (!accounts.value || !Array.isArray(accounts.value)) return []
@@ -741,20 +601,6 @@ export default {
       return accounts.value
         .filter(account => account.is_active)
         .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }))
-    })
-
-    // Watch for changes in parent code to update level and suggested code
-    watch(() => newAccount.parent_code, (newParentCode) => {
-      updateAccountLevel()
-      generateSuggestedCode()
-    })
-
-    watch(() => newAccount.account_relationship_type, () => {
-      generateSuggestedCode()
-    })
-
-    watch(() => newAccount.account_type, () => {
-      generateSuggestedCode()
     })
 
     // Methods
@@ -795,7 +641,7 @@ export default {
         initialized.value = true
       } catch (error) {
         console.error('Error loading accounts:', error)
-        toast.error('Error al cargar cuentas')
+        alerts.error('Error', 'Error al cargar cuentas')
         accounts.value = []
         initialized.value = true
       } finally {
@@ -900,7 +746,7 @@ export default {
           params: { company_id: company.value.id }
         })
 
-        toast.success(response.data.message)
+        alerts.success('Éxito', response.data.message)
         changedAccounts.value.clear()
 
         // Ejecutar cálculo automático de saldos padre después de guardar
@@ -920,86 +766,174 @@ export default {
         }
       } catch (error) {
         console.error('Error saving balances:', error)
-        toast.error('Error al guardar saldos')
+        alerts.error('Error', 'Error al guardar saldos')
       } finally {
         loading.value = false
       }
     }
 
+    const toggleExportMenu = () => {
+      showExportMenu.value = !showExportMenu.value
+    }
+
+    const onExportTemplate = () => {
+      showExportMenu.value = false
+      generateTemplateExcel()
+    }
+
+    const onExportLoaded = () => {
+      showExportMenu.value = false
+      exportToExcel()
+    }
+
+    const handleClickOutside = (event) => {
+      const exportEl = exportMenuRef.value
+      const clearEl = clearMenuRef.value
+      if (showExportMenu.value && exportEl && !exportEl.contains(event.target)) {
+        showExportMenu.value = false
+      }
+      if (showClearMenu.value && clearEl && !clearEl.contains(event.target)) {
+        showClearMenu.value = false
+      }
+    }
+
     const exportToExcel = async () => {
       try {
+        // Tomar las cuentas actualmente cargadas y filtradas en pantalla
+        const sourceAccounts = (filteredAccounts.value && filteredAccounts.value.length > 0)
+          ? filteredAccounts.value
+          : (accounts.value || [])
+
         // Si no hay cuentas, generar plantilla
-        if (!accounts.value || accounts.value.length === 0) {
+        if (!sourceAccounts || sourceAccounts.length === 0) {
           generateTemplateExcel()
           return
         }
 
-        const response = await api.get('/accounts/export-chart', {
-          params: { company_id: company.value.id }
-        })
-
-        const data = response.data.map(account => ({
+        const data = sourceAccounts.map(account => ({
           'Código': account.code,
           'Cuenta': account.name,
           'Tipo': account.account_type,
           'Naturaleza': account.nature,
-          'Código Padre': account.parent_code || '',
-          'Nivel': account.level || 1,
-          'Padre/Hija': getRelationshipType(account),
-          'Saldo Débito': account.initial_debit_balance,
-          'Saldo Crédito': account.initial_credit_balance
+          'Saldo Débito': account.initial_debit_balance || 0,
+          'Saldo Crédito': account.initial_credit_balance || 0
         }))
 
         const ws = XLSX.utils.json_to_sheet(data)
         const wb = XLSX.utils.book_new()
-        XLSX.utils.book_append_sheet(wb, ws, 'Plan de Cuentas')
+        XLSX.utils.book_append_sheet(wb, ws, 'Saldos Iniciales')
 
-        const fileName = `plan_cuentas_${company.value.name}_${new Date().toISOString().split('T')[0]}.xlsx`
+        const fileName = `saldos_iniciales_${company.value?.name || 'empresa'}_${new Date().toISOString().split('T')[0]}.xlsx`
         XLSX.writeFile(wb, fileName)
 
-        toast.success('Archivo exportado exitosamente')
+        alerts.success('Éxito', 'Archivo exportado exitosamente')
       } catch (error) {
         console.error('Error exporting:', error)
-        // Si hay error de red, generar plantilla
-        if (error.code === 'ERR_NETWORK' || error.response?.status >= 500) {
-          toast.warning('No se pudo conectar con el servidor. Generando plantilla...')
-          generateTemplateExcel()
-        } else {
-          toast.error('Error al exportar archivo')
-        }
+        alerts.error('Error', 'Error al exportar archivo')
+      }
+    }
+
+    const toggleClearMenu = () => {
+      showClearMenu.value = !showClearMenu.value
+    }
+
+    const clearBalances = async (targetAccounts) => {
+      if (!targetAccounts || targetAccounts.length === 0) return
+      const payload = targetAccounts
+        .filter(acc => (acc.initial_debit_balance || 0) !== 0 || (acc.initial_credit_balance || 0) !== 0)
+        .map(acc => ({
+          account_code: acc.code,
+          initial_debit_balance: 0,
+          initial_credit_balance: 0
+        }))
+
+      if (payload.length === 0) {
+        alerts.info('Sin cambios', 'No hay saldos para limpiar')
+        return
+      }
+
+      clearing.value = true
+      try {
+        await api.put('/accounts/initial-balances', { balances: payload }, {
+          params: { company_id: company.value.id }
+        })
+
+        alerts.success('Éxito', 'Saldos iniciales limpiados correctamente')
+        await loadAccounts()
+        clearFilters()
+        currentPage.value = 1
+        await nextTick()
+      } catch (error) {
+        console.error('Error clearing balances:', error)
+        alerts.error('Error', 'Error al limpiar saldos')
+      } finally {
+        clearing.value = false
+      }
+    }
+
+    const clearBalancesVisible = async () => {
+      showClearMenu.value = false
+      const confirmed = await alerts.confirm({ title: 'Confirmación', text: '¿Poner en 0 los saldos iniciales de las cuentas visibles?' })
+      if (!confirmed) return
+      const target = (filteredAccounts.value && filteredAccounts.value.length > 0)
+        ? filteredAccounts.value
+        : (accounts.value || [])
+      await clearBalances(target)
+    }
+
+    const clearBalancesAll = async () => {
+      showClearMenu.value = false
+      const confirmed = await alerts.confirm({ title: 'Confirmación', text: '¿LIMPIAR TODO? Se eliminará el plan de cuentas (forzado).' })
+      if (!confirmed) return
+      try {
+        clearing.value = true
+        // Purga forzada directa: borra journal, mayor y cuentas
+        await api.delete('/accounts/purge', {
+          params: { company_id: company.value.id, force: true }
+        })
+        alerts.success('Éxito', 'Se eliminó el plan de cuentas (forzado)')
+        await loadAccounts()
+        clearFilters()
+        currentPage.value = 1
+        await nextTick()
+      } catch (error) {
+        console.error('Error eliminando el plan de cuentas:', error)
+        alerts.error('Error', 'No se pudo eliminar el plan de cuentas')
+      } finally {
+        clearing.value = false
       }
     }
 
     const generateTemplateExcel = () => {
-      // Datos de plantilla con estructura jerárquica de ejemplo
+      // Datos de plantilla simplificada (jerarquía se derivará del Código)
       const templateData = [
-        { 'Código': '1', 'Cuenta': 'Activo', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Código Padre': '', 'Nivel': 1, 'Padre/Hija': 'P', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '101', 'Cuenta': 'Activo corriente', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Código Padre': '1', 'Nivel': 2, 'Padre/Hija': 'P', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '10101', 'Cuenta': 'Efectivo y equivalentes al efectivo', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Código Padre': '101', 'Nivel': 3, 'Padre/Hija': 'P', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '1010101', 'Cuenta': 'CAJAS VENTA', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Código Padre': '10101', 'Nivel': 4, 'Padre/Hija': 'P', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '101010101', 'Cuenta': 'CAJA 1', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Código Padre': '1010101', 'Nivel': 5, 'Padre/Hija': 'H', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '101010102', 'Cuenta': 'CAJA 2', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Código Padre': '1010101', 'Nivel': 5, 'Padre/Hija': 'H', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '101010103', 'Cuenta': 'CAJA 3', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Código Padre': '1010101', 'Nivel': 5, 'Padre/Hija': 'H', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '1010102', 'Cuenta': 'CAJA CHICA', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Código Padre': '10101', 'Nivel': 4, 'Padre/Hija': 'P', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '101010201', 'Cuenta': 'CAJA CHICA 1', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Código Padre': '1010102', 'Nivel': 5, 'Padre/Hija': 'H', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '101010202', 'Cuenta': 'CAJA CHICA 2', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Código Padre': '1010102', 'Nivel': 5, 'Padre/Hija': 'H', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '1010103', 'Cuenta': 'BANCOS', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Código Padre': '10101', 'Nivel': 4, 'Padre/Hija': 'P', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '101010301', 'Cuenta': 'Banco del Pichincha', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Código Padre': '1010103', 'Nivel': 5, 'Padre/Hija': 'H', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '101010302', 'Cuenta': 'Banco del Austro', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Código Padre': '1010103', 'Nivel': 5, 'Padre/Hija': 'H', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '101010303', 'Cuenta': 'Banco Produbanco', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Código Padre': '1010103', 'Nivel': 5, 'Padre/Hija': 'H', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '2', 'Cuenta': 'Pasivo', 'Tipo': 'pasivo', 'Naturaleza': 'acreedora', 'Código Padre': '', 'Nivel': 1, 'Padre/Hija': 'P', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '201', 'Cuenta': 'Pasivo corriente', 'Tipo': 'pasivo', 'Naturaleza': 'acreedora', 'Código Padre': '2', 'Nivel': 2, 'Padre/Hija': 'P', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '20101', 'Cuenta': 'CUENTAS POR PAGAR', 'Tipo': 'pasivo', 'Naturaleza': 'acreedora', 'Código Padre': '201', 'Nivel': 3, 'Padre/Hija': 'H', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '20102', 'Cuenta': 'IMPUESTOS POR PAGAR', 'Tipo': 'pasivo', 'Naturaleza': 'acreedora', 'Código Padre': '201', 'Nivel': 3, 'Padre/Hija': 'H', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '3', 'Cuenta': 'Patrimonio', 'Tipo': 'patrimonio', 'Naturaleza': 'acreedora', 'Código Padre': '', 'Nivel': 1, 'Padre/Hija': 'P', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '301', 'Cuenta': 'CAPITAL SOCIAL', 'Tipo': 'patrimonio', 'Naturaleza': 'acreedora', 'Código Padre': '3', 'Nivel': 2, 'Padre/Hija': 'H', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '302', 'Cuenta': 'RESERVAS', 'Tipo': 'patrimonio', 'Naturaleza': 'acreedora', 'Código Padre': '3', 'Nivel': 2, 'Padre/Hija': 'H', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '4', 'Cuenta': 'Ingresos', 'Tipo': 'ingresos', 'Naturaleza': 'acreedora', 'Código Padre': '', 'Nivel': 1, 'Padre/Hija': 'P', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '401', 'Cuenta': 'VENTAS', 'Tipo': 'ingresos', 'Naturaleza': 'acreedora', 'Código Padre': '4', 'Nivel': 2, 'Padre/Hija': 'H', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '5', 'Cuenta': 'Gastos', 'Tipo': 'gastos', 'Naturaleza': 'deudora', 'Código Padre': '', 'Nivel': 1, 'Padre/Hija': 'P', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '501', 'Cuenta': 'GASTOS DE VENTAS', 'Tipo': 'gastos', 'Naturaleza': 'deudora', 'Código Padre': '5', 'Nivel': 2, 'Padre/Hija': 'H', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '6', 'Cuenta': 'Costos', 'Tipo': 'costos', 'Naturaleza': 'deudora', 'Código Padre': '', 'Nivel': 1, 'Padre/Hija': 'P', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
-        { 'Código': '601', 'Cuenta': 'COSTO DE VENTAS', 'Tipo': 'costos', 'Naturaleza': 'deudora', 'Código Padre': '6', 'Nivel': 2, 'Padre/Hija': 'H', 'Saldo Débito': 0, 'Saldo Crédito': 0 }
+        { 'Código': '1', 'Cuenta': 'Activo', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '101', 'Cuenta': 'Activo corriente', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '10101', 'Cuenta': 'Efectivo y equivalentes al efectivo', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '1010101', 'Cuenta': 'CAJAS VENTA', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '101010101', 'Cuenta': 'CAJA 1', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '101010102', 'Cuenta': 'CAJA 2', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '101010103', 'Cuenta': 'CAJA 3', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '1010102', 'Cuenta': 'CAJA CHICA', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '101010201', 'Cuenta': 'CAJA CHICA 1', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '101010202', 'Cuenta': 'CAJA CHICA 2', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '1010103', 'Cuenta': 'BANCOS', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '101010301', 'Cuenta': 'Banco del Pichincha', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '101010302', 'Cuenta': 'Banco del Austro', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '101010303', 'Cuenta': 'Banco Produbanco', 'Tipo': 'activo', 'Naturaleza': 'deudora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '2', 'Cuenta': 'Pasivo', 'Tipo': 'pasivo', 'Naturaleza': 'acreedora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '201', 'Cuenta': 'Pasivo corriente', 'Tipo': 'pasivo', 'Naturaleza': 'acreedora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '20101', 'Cuenta': 'CUENTAS POR PAGAR', 'Tipo': 'pasivo', 'Naturaleza': 'acreedora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '20102', 'Cuenta': 'IMPUESTOS POR PAGAR', 'Tipo': 'pasivo', 'Naturaleza': 'acreedora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '3', 'Cuenta': 'Patrimonio', 'Tipo': 'patrimonio', 'Naturaleza': 'acreedora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '301', 'Cuenta': 'CAPITAL SOCIAL', 'Tipo': 'patrimonio', 'Naturaleza': 'acreedora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '302', 'Cuenta': 'RESERVAS', 'Tipo': 'patrimonio', 'Naturaleza': 'acreedora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '4', 'Cuenta': 'Ingresos', 'Tipo': 'ingresos', 'Naturaleza': 'acreedora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '401', 'Cuenta': 'VENTAS', 'Tipo': 'ingresos', 'Naturaleza': 'acreedora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '5', 'Cuenta': 'Gastos', 'Tipo': 'gastos', 'Naturaleza': 'deudora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '501', 'Cuenta': 'GASTOS DE VENTAS', 'Tipo': 'gastos', 'Naturaleza': 'deudora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '6', 'Cuenta': 'Costos', 'Tipo': 'costos', 'Naturaleza': 'deudora', 'Saldo Débito': 0, 'Saldo Crédito': 0 },
+        { 'Código': '601', 'Cuenta': 'COSTO DE VENTAS', 'Tipo': 'costos', 'Naturaleza': 'deudora', 'Saldo Débito': 0, 'Saldo Crédito': 0 }
       ]
 
       const ws = XLSX.utils.json_to_sheet(templateData)
@@ -1008,7 +942,7 @@ export default {
 
       // Crear hoja de instrucciones
       const instructionsData = [
-        ['INSTRUCCIONES PARA USAR ESTA PLANTILLA JERÁRQUICA'],
+        ['INSTRUCCIONES PARA USAR ESTA PLANTILLA SIMPLIFICADA'],
         [''],
         ['1. Complete los saldos iniciales en las columnas "Saldo Débito" y "Saldo Crédito"'],
         ['2. Los tipos de cuenta válidos son: activo, pasivo, patrimonio, ingresos, gastos, costos'],
@@ -1017,29 +951,28 @@ export default {
         ['5. El total de débitos debe ser igual al total de créditos'],
         ['6. Guarde el archivo y úselo para importar en el sistema'],
         [''],
-        ['ESTRUCTURA JERÁRQUICA:'],
-        ['- Código Padre: Código de la cuenta padre (vacío para cuentas raíz)'],
-        ['- Nivel: Nivel jerárquico (1-5)'],
-        ['- Padre/Hija: P = Cuenta padre, H = Cuenta hija'],
-        ['- Las cuentas padre pueden tener cuentas hijas'],
-        ['- Las cuentas hijas pertenecen a una cuenta padre'],
+        ['ESTRUCTURA Y JERARQUÍA (automática):'],
+        ['- El sistema derivará automáticamente el Código Padre y el Nivel a partir del Código'],
+        ['- No es necesario incluir columnas de Código Padre/Nivel/Padre-Hija'],
+        ['- La jerarquía se calcula basándose en la longitud del código'],
+        ['- Ejemplo: código "101" será nivel 2, padre "1"; código "10101" será nivel 3, padre "101"'],
         [''],
-        ['EJEMPLO DE ESTRUCTURA JERÁRQUICA:'],
-        ['Código', 'Cuenta', 'Tipo', 'Naturaleza', 'Código Padre', 'Nivel', 'Padre/Hija', 'Saldo Débito', 'Saldo Crédito'],
-        ['1', 'Activo', 'activo', 'deudora', '', '1', 'P', '0.00', '0.00'],
-        ['101', 'Activo corriente', 'activo', 'deudora', '1', '2', 'P', '0.00', '0.00'],
-        ['10101', 'Efectivo', 'activo', 'deudora', '101', '3', 'P', '0.00', '0.00'],
-        ['1010101', 'CAJA 1', 'activo', 'deudora', '10101', '4', 'H', '5000.00', '0.00'],
-        ['1010102', 'CAJA 2', 'activo', 'deudora', '10101', '4', 'H', '3000.00', '0.00'],
+        ['EJEMPLO DE ESTRUCTURA SIMPLIFICADA:'],
+        ['Código', 'Cuenta', 'Tipo', 'Naturaleza', 'Saldo Débito', 'Saldo Crédito'],
+        ['1', 'Activo', 'activo', 'deudora', '0.00', '0.00'],
+        ['101', 'Activo corriente', 'activo', 'deudora', '0.00', '0.00'],
+        ['10101', 'Efectivo', 'activo', 'deudora', '0.00', '0.00'],
+        ['1010101', 'CAJA 1', 'activo', 'deudora', '5000.00', '0.00'],
+        ['1010102', 'CAJA 2', 'activo', 'deudora', '3000.00', '0.00'],
         [''],
         ['NOTAS IMPORTANTES:'],
-        ['- No modifique los códigos de cuenta'],
-        ['- No modifique los nombres de las cuentas'],
-        ['- No modifique la estructura jerárquica (Código Padre, Nivel, Padre/Hija)'],
+        ['- No modifique los códigos de cuenta existentes'],
+        ['- No modifique los nombres de las cuentas existentes'],
         ['- Solo modifique los saldos iniciales'],
         ['- Los saldos deben estar en formato numérico (ej: 1000.50)'],
         ['- Use punto como separador decimal'],
-        ['- Para crear nuevas cuentas, mantenga la jerarquía correcta']
+        ['- Para crear nuevas cuentas, use códigos que sigan la jerarquía numérica'],
+        ['- El sistema calculará automáticamente la relación padre-hijo']
       ]
 
       const instructionsWs = XLSX.utils.aoa_to_sheet(instructionsData)
@@ -1048,7 +981,7 @@ export default {
       const fileName = `plantilla_plan_cuentas_${company.value?.name || 'empresa'}_${new Date().toISOString().split('T')[0]}.xlsx`
       XLSX.writeFile(wb, fileName)
 
-      toast.success('Plantilla Excel generada exitosamente')
+      alerts.success('Éxito', 'Plantilla Excel generada exitosamente')
     }
 
     const handleFileUpload = (event) => {
@@ -1100,10 +1033,10 @@ export default {
             }
           }).filter(row => row.code && row.name)
 
-          toast.success(`Se encontraron ${importPreview.value.length} registros válidos`)
+          alerts.success('Éxito', `Se encontraron ${importPreview.value.length} registros válidos`)
         } catch (error) {
           console.error('Error parsing Excel:', error)
-          toast.error('Error al procesar archivo Excel')
+          alerts.error('Error', 'Error al procesar archivo Excel')
         }
       }
       reader.readAsArrayBuffer(file)
@@ -1132,10 +1065,10 @@ export default {
           params: { company_id: company.value.id }
         })
 
-        toast.success(response.data.message)
+        alerts.success('Éxito', response.data.message)
         if (response.data.errors && response.data.errors.length > 0) {
           console.warn('Errores en importación:', response.data.errors)
-          toast.warning(`Advertencia: ${response.data.errors.length} errores encontrados`)
+          alerts.warning('Advertencia', `${response.data.errors.length} errores encontrados`)
         }
 
         showImportModal.value = false
@@ -1147,7 +1080,7 @@ export default {
         await nextTick()
       } catch (error) {
         console.error('Error importing balances:', error)
-        toast.error('Error al importar saldos')
+        alerts.error('Error', 'Error al importar saldos')
       } finally {
         importing.value = false
       }
@@ -1208,159 +1141,83 @@ export default {
       }).format(amount)
     }
 
-    // Create Account methods
+    // Account Modal methods
     const closeCreateAccountModal = () => {
       showCreateAccountModal.value = false
-      resetNewAccountForm()
+      editingAccount.value = null
+    }
+
+    const editAccount = (account) => {
+      editingAccount.value = account
+      showCreateAccountModal.value = true
+    }
+
+    const deleteAccount = async (account) => {
+      const confirmed = await alerts.confirm({
+        title: '¿Eliminar cuenta?',
+        text: `¿Estás seguro de que deseas eliminar la cuenta "${account.name}" (${account.code})? Esta acción no se puede deshacer.`,
+        icon: 'warning',
+        confirmButtonText: 'Eliminar',
+        confirmButtonColor: '#dc3545'
+      })
+
+      if (confirmed) {
+        try {
+          await api.delete(`/accounts/${account.id}`, {
+            params: { company_id: company.value.id }
+          })
+          
+          alerts.success('Éxito', 'Cuenta eliminada correctamente')
+          
+          // Notificar cambio en el store
+          companyStore.notifyAccountsChanged()
+          
+          // Recargar la lista de cuentas
+          await loadAccounts()
+        } catch (error) {
+          console.error('Error deleting account:', error)
+          alerts.error('Error', 'Error al eliminar la cuenta')
+        }
+      }
     }
 
     const closeAllModals = () => {
       showImportModal.value = false
       showCreateAccountModal.value = false
-      resetNewAccountForm()
+      showExportMenu.value = false
+      editingAccount.value = null
     }
 
-    const resetNewAccountForm = () => {
-      Object.assign(newAccount, {
-        code: '',
-        name: '',
-        description: '',
-        account_type: '',
-        nature: '',
-        parent_code: '',
-        level: 1,
-        account_relationship_type: 'H',
-        initial_debit_balance: 0,
-        initial_credit_balance: 0,
-        is_editable: true
-      })
-      suggestedCode.value = ''
-    }
-
-    const updateAccountLevel = () => {
-      if (!newAccount.parent_code) {
-        newAccount.level = 1
-        return
-      }
-
-      // Find parent account to get its level
-      const parentAccount = accounts.value.find(acc => acc.code === newAccount.parent_code)
-      if (parentAccount) {
-        newAccount.level = (parentAccount.level || 1) + 1
-      } else {
-        // If parent not found, calculate level from code length
-        newAccount.level = Math.ceil(newAccount.parent_code.length / 2) + 1
-      }
-    }
-
-    const generateSuggestedCode = () => {
-      if (!newAccount.parent_code) {
-        // For root level accounts, suggest based on account type
-        const typeCodes = {
-          'activo': '1',
-          'pasivo': '2', 
-          'patrimonio': '3',
-          'ingresos': '4',
-          'gastos': '5',
-          'costos': '6'
-        }
-        suggestedCode.value = typeCodes[newAccount.account_type] || '1'
-        return
-      }
-
-      // Find the next available code for the parent
-      const parentAccount = accounts.value.find(acc => acc.code === newAccount.parent_code)
-      if (!parentAccount) {
-        suggestedCode.value = newAccount.parent_code + '01'
-        return
-      }
-
-      // Get all children of the parent account
-      const children = accounts.value.filter(acc => 
-        acc.parent_code === newAccount.parent_code && 
-        acc.code.startsWith(newAccount.parent_code) &&
-        acc.code !== newAccount.parent_code
-      )
-
-      if (children.length === 0) {
-        // First child
-        suggestedCode.value = newAccount.parent_code + '01'
-      } else {
-        // Find the next available number
-        const parentCodeLength = newAccount.parent_code.length
-        const childNumbers = children
-          .map(child => {
-            const childSuffix = child.code.substring(parentCodeLength)
-            return parseInt(childSuffix) || 0
-          })
-          .sort((a, b) => a - b)
-
-        let nextNumber = 1
-        for (const num of childNumbers) {
-          if (num === nextNumber) {
-            nextNumber++
-          } else {
-            break
-          }
-        }
-
-        // Format with leading zeros (2 digits)
-        suggestedCode.value = newAccount.parent_code + nextNumber.toString().padStart(2, '0')
-      }
-    }
-
-    const createAccount = async () => {
-      if (!newAccount.name || !newAccount.account_type || !newAccount.nature) {
-        toast.error('Por favor complete todos los campos obligatorios')
-        return
-      }
-
-      // Use suggested code if no code provided
-      if (!newAccount.code && suggestedCode.value) {
-        newAccount.code = suggestedCode.value
-      }
-
-      if (!newAccount.code) {
-        toast.error('Por favor ingrese un código de cuenta')
-        return
-      }
-
-      creatingAccount.value = true
+    const handleSaveAccount = async (accountData) => {
       try {
-        const accountData = {
-          code: newAccount.code.trim(),
-          name: newAccount.name.trim(),
-          description: newAccount.description?.trim() || '',
-          account_type: newAccount.account_type,
-          nature: newAccount.nature,
-          parent_code: newAccount.parent_code?.trim() || null,
-          level: newAccount.level || 1,
-          initial_debit_balance: newAccount.initial_debit_balance || 0,
-          initial_credit_balance: newAccount.initial_credit_balance || 0,
-          is_editable: newAccount.is_editable
-        }
-
-        const response = await api.post('/accounts', accountData, {
-          params: { company_id: company.value.id }
-        })
-
-        toast.success('Cuenta creada exitosamente')
-        closeCreateAccountModal()
-        await loadAccounts()
-        
-        // Marcar la nueva cuenta como cambiada para que aparezca en la lista de cambios
-        const newAccountId = response.data.id
-        changedAccounts.value.add(newAccountId)
-        
-      } catch (error) {
-        console.error('Error creating account:', error)
-        if (error.response?.data?.detail) {
-          toast.error(error.response.data.detail)
+        if (editingAccount.value) {
+          // Actualizar cuenta existente
+          await api.put(`/accounts/${editingAccount.value.id}`, accountData, {
+            params: { company_id: company.value.id }
+          })
         } else {
-          toast.error('Error al crear la cuenta')
+          // Crear nueva cuenta
+          const response = await api.post('/accounts', accountData, {
+            params: { company_id: company.value.id }
+          })
+          
+          // Marcar la nueva cuenta como cambiada para que aparezca en la lista de cambios
+          const newAccountId = response.data.id
+          changedAccounts.value.add(newAccountId)
         }
-      } finally {
-        creatingAccount.value = false
+        
+        // Notificar cambio en el store
+        companyStore.notifyAccountsChanged()
+        
+        await loadAccounts()
+        return true
+      } catch (error) {
+        console.error('Error saving account:', error)
+        if (error.response?.data?.detail) {
+          throw new Error(error.response.data.detail)
+        } else {
+          throw new Error('Error al guardar la cuenta')
+        }
       }
     }
 
@@ -1375,26 +1232,31 @@ export default {
     // Lifecycle
     onMounted(async () => {
       await loadAccounts()
+      document.addEventListener('click', handleClickOutside)
+    })
+
+    onBeforeUnmount(() => {
+      document.removeEventListener('click', handleClickOutside)
     })
 
     return {
       loading,
       calculatingBalances,
       importing,
-      creatingAccount,
       accounts: accounts,
+      filteredAccounts,
       paginatedAccounts: paginatedAccounts,
       changedAccounts,
       showImportModal,
       showCreateAccountModal,
+      editingAccount,
       importPreview,
-      newAccount,
-      suggestedCode,
       parentAccounts,
       searchTerm,
       filterType,
       showOnlyWithBalances,
       currentPage,
+      tableKey,
       totalPages,
       visiblePages,
       totalDebit,
@@ -1416,10 +1278,22 @@ export default {
       importBalances,
       closeCreateAccountModal,
       closeAllModals,
-      resetNewAccountForm,
-      updateAccountLevel,
-      generateSuggestedCode,
-      createAccount,
+      editAccount,
+      deleteAccount,
+      handleSaveAccount,
+      showExportMenu,
+      exportMenuRef,
+      showClearMenu,
+      clearMenuRef,
+      clearing,
+      hasAnyLoadedBalances,
+      hasLoadedBalancesVisible,
+      toggleExportMenu,
+      onExportTemplate,
+      onExportLoaded,
+      toggleClearMenu,
+      clearBalancesVisible,
+      clearBalancesAll,
       getAccountTypeClass,
       getAccountTypeLabel,
       getNatureClass,
@@ -1484,5 +1358,29 @@ export default {
 
 .badge.bg-secondary {
   background-color: #6c757d !important;
+}
+
+.export-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1050;
+  background: #fff;
+  border: 1px solid #dee2e6;
+  border-radius: 0.25rem;
+  min-width: 240px;
+  margin-top: 4px;
+}
+
+.export-menu .dropdown-item {
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  background: transparent;
+  border: none;
+}
+
+.export-menu .dropdown-item:hover {
+  background: #f8f9fa;
 }
 </style>

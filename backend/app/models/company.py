@@ -25,11 +25,7 @@ class Company(Document):
     
     class Settings:
         name = "companies"
-        indexes = [
-            "ruc",
-            "name",
-            "status"
-        ]
+        indexes = []
 
 class CompanyCreate(BaseModel):
     name: str

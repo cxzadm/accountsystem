@@ -1,5 +1,8 @@
 /* Custom CSS for Sistema Contable  Accescont Ecuador */
 
+/* Importar estilos de breadcrumbs */
+@import './breadcrumb.css';
+
 :root {
   --primary-color: #165c6a;
   --secondary-color: #bb8945;

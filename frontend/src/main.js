@@ -5,6 +5,7 @@ import Toast from 'vue-toastification'
 import 'vue-toastification/dist/index.css'
 import 'bootstrap/dist/css/bootstrap.min.css'
 import '@fortawesome/fontawesome-free/css/all.min.css'
+import Swal from 'sweetalert2'
 
 // Import Bootstrap JS and make it globally available
 import * as bootstrap from 'bootstrap'

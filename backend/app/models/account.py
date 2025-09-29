@@ -40,12 +40,7 @@ class Account(Document):
     
     class Settings:
         name = "accounts"
-        indexes = [
-            "code",
-            "company_id",
-            "account_type",
-            "is_active"
-        ]
+        indexes = []
 
 class AccountCreate(BaseModel):
     code: str

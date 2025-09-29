@@ -16,7 +16,15 @@
             <div class="row">
               <div class="col-md-3"><strong>Fecha:</strong> {{ formatDate(entry.date) }}</div>
               <div class="col-md-3"><strong>Tipo:</strong> {{ entry.entry_type }}</div>
-              <div class="col-md-6"><strong>Descripción:</strong> {{ entry.description }}</div>
+              <div class="col-md-3"><strong>Responsable:</strong> {{ entry.responsable || 'Sin responsable' }}</div>
+              <div class="col-md-3"><strong>Estado:</strong> 
+                <span :class="`badge bg-${getStatusColor(entry.status)}`">
+                  {{ entry.status }}
+                </span>
+              </div>
+            </div>
+            <div class="row mt-2">
+              <div class="col-12"><strong>Descripción:</strong> {{ entry.description }}</div>
             </div>
           </div>
           <div v-if="entry" class="table-responsive">
@@ -152,10 +160,19 @@ export default {
       return new Intl.NumberFormat('es-EC', { style: 'currency', currency: 'USD' }).format(amount)
     }
 
+    const getStatusColor = (status) => {
+      const colors = {
+        draft: 'secondary',
+        posted: 'success',
+        reversed: 'warning'
+      }
+      return colors[status] || 'secondary'
+    }
+
     onMounted(() => {})
     onBeforeUnmount(() => {})
 
-    return { show, hide, onBackdropClick, onPrint, totalDebit, totalCredit, formatDate, formatCurrency }
+    return { show, hide, onBackdropClick, onPrint, totalDebit, totalCredit, formatDate, formatCurrency, getStatusColor }
   }
 }
 </script>

@@ -45,13 +45,7 @@ class AuditLog(Document):
     
     class Settings:
         name = "audit_logs"
-        indexes = [
-            "user_id",
-            "action",
-            "module",
-            "timestamp",
-            "company_id"
-        ]
+        indexes = []
 
 class AuditLogResponse(BaseModel):
     id: str

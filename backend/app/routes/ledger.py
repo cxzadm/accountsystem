@@ -341,6 +341,7 @@ async def get_ledger_entries(
                 total_credit=entry["total_credit"],
                 company_id=entry["company_id"],
                 created_by=entry["created_by"],
+                responsable=entry.get("responsable"),
                 approved_by=entry.get("approved_by"),
                 approved_at=entry.get("approved_at"),
                 created_at=entry["created_at"],

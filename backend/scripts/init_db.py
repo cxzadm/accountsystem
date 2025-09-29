@@ -22,8 +22,9 @@ from app.auth.jwt_handler import get_password_hash, get_user_permissions
 async def init_database():
     """Inicializar la base de datos con datos de ejemplo"""
     
-    # Conectar a MongoDB
-    client = AsyncIOMotorClient(settings.mongodb_url)
+    # Conectar a MongoDB (prioriza variable de entorno MONGODB_URL si existe)
+    mongo_url = os.getenv("MONGODB_URL", settings.mongodb_url)
+    client = AsyncIOMotorClient(mongo_url)
     database = client[settings.database_name]
     
     # Inicializar Beanie
@@ -168,6 +169,9 @@ async def init_database():
 
 if __name__ == "__main__":
     asyncio.run(init_database())
+
+
+
 
 
 

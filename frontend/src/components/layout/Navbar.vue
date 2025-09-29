@@ -17,7 +17,7 @@
       </router-link>
 
       <!-- Company selector -->
-      <div class="navbar-nav me-auto">
+      <div class="navbar-nav me-auto" v-if="canReadCompanies">
         <div class="nav-item dropdown" v-if="currentCompany">
           <a 
             class="nav-link dropdown-toggle" 
@@ -87,6 +87,7 @@ import { computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
 import { useToast } from 'vue-toastification'
+import { useRouter } from 'vue-router'
 
 export default {
   name: 'Navbar',
@@ -94,10 +95,12 @@ export default {
     const authStore = useAuthStore()
     const companyStore = useCompanyStore()
     const toast = useToast()
+    const router = useRouter()
 
     const user = computed(() => authStore.user)
     const companies = computed(() => companyStore.companies)
     const currentCompany = computed(() => companyStore.currentCompany)
+    const canReadCompanies = computed(() => authStore.hasPermission && authStore.hasPermission('companies:read'))
 
     const toggleSidebar = () => {
       // Emitir evento personalizado para el sidebar
@@ -119,6 +122,7 @@ export default {
       try {
         await authStore.logout()
         toast.success('Sesión cerrada exitosamente')
+        router.push('/login')
       } catch (error) {
         toast.error('Error al cerrar sesión')
       }
@@ -127,7 +131,7 @@ export default {
     onMounted(async () => {
       try {
         // Solo cargar empresas si el usuario está autenticado
-        if (authStore.isAuthenticated) {
+        if (authStore.isAuthenticated && canReadCompanies.value) {
           await companyStore.fetchCompanies()
           const current = companyStore.getCurrentCompany()
           if (current) {
@@ -145,6 +149,7 @@ export default {
       user,
       companies,
       currentCompany,
+      canReadCompanies,
       toggleSidebar,
       selectCompany,
       logout

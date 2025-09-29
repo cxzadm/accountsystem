@@ -24,13 +24,7 @@ class DocumentNumberReservation(Document):
 
     class Settings:
         name = "document_reservations"
-        indexes = [
-            "company_id",
-            "document_type_id",
-            "number",
-            "status",
-            [("company_id", 1), ("number", 1), ("status", 1)]  # Unique constraint
-        ]
+        indexes = []
 
 
 class ReservationUpdate(BaseModel):

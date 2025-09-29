@@ -22,6 +22,7 @@ const Settings = () => import('@/views/Settings.vue')
 const DocumentTypes = () => import('@/views/admin/DocumentTypes.vue')
 const DocumentReservations = () => import('@/views/admin/DocumentReservations.vue')
 const CompanySettings = () => import('@/views/companies/CompanySettings.vue')
+const ConfiguracionBackend = () => import('@/views/configback/ConfiguracionBackend.vue')
 
 const routes = [
   {
@@ -29,6 +30,12 @@ const routes = [
     name: 'Login',
     component: Login,
     meta: { requiresAuth: false }
+  },
+  {
+    path: '/admin/backend-config',
+    name: 'BackendConfig',
+    component: ConfiguracionBackend,
+    meta: { requiresAuth: true, roles: ['admin'] }
   },
   {
     path: '/companies/:id/settings',
@@ -184,6 +191,8 @@ router.beforeEach((to, from, next) => {
   } else if (to.path === '/login' && authStore.isAuthenticated) {
     next('/')
   } else if (to.meta.permission && !authStore.hasPermission(to.meta.permission)) {
+    next('/')
+  } else if (to.meta.roles && !authStore.hasAnyRole(to.meta.roles)) {
     next('/')
   } else {
     next()

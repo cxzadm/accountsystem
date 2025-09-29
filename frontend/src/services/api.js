@@ -1,8 +1,17 @@
 import axios from 'axios'
+import { config } from '../../config.js'
+
+// Decide baseURL: use reverse-proxy path in production (served via Nginx),
+// and direct backend URL during Vite dev server
+const isViteDev = typeof window !== 'undefined' && (
+  window.location.port === '5173' || window.location.hostname === 'localhost'
+)
+
+const apiBaseURL = isViteDev ? `${config.API_BASE_URL}/api` : '/api'
 
 // Create axios instance
 const api = axios.create({
-  baseURL: 'http://localhost:8000/api',
+  baseURL: apiBaseURL,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json'
@@ -30,15 +39,15 @@ api.interceptors.response.use(
     return response
   },
   async (error) => {
-    if (error.response?.status === 401 || error.response?.status === 403) {
-      // Clear token and redirect to login
+    // Solo cerrar sesión automáticamente en 401 (token inválido/expirado)
+    if (error.response?.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('refreshToken')
       localStorage.removeItem('user')
       localStorage.removeItem('permissions')
       window.location.href = '/login'
     }
-    
+    // Para 403 (forbidden) solo propagamos el error para que la UI lo maneje
     return Promise.reject(error)
   }
 )

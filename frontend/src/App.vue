@@ -5,6 +5,7 @@
       <Sidebar v-if="isAuthenticated" />
       
       <main :class="{ 'with-sidebar': isAuthenticated }" class="flex-grow-1">
+        <Breadcrumb v-if="isAuthenticated" />
         <div class="content-wrapper">
           <router-view />
         </div>
@@ -20,13 +21,15 @@ import { useAuthStore } from '@/stores/auth'
 import Navbar from '@/components/layout/Navbar.vue'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import Footer from '@/components/layout/Footer.vue'
+import Breadcrumb from '@/components/Breadcrumb.vue'
 
 export default {
   name: 'App',
   components: {
     Navbar,
     Sidebar,
-    Footer
+    Footer,
+    Breadcrumb
   },
   setup() {
     const authStore = useAuthStore()
@@ -54,12 +57,13 @@ body.sidebar-collapsed .with-sidebar {
 
 main {
   min-height: 100vh;
-  padding: 20px;
+  padding: 0;
   padding-bottom: 0;
 }
 
 .content-wrapper {
   min-height: calc(100vh - 70px - 40px); /* Altura total - navbar - padding */
+  padding: 20px;
   padding-bottom: 2rem;
 }
 

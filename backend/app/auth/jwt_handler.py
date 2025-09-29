@@ -64,6 +64,7 @@ def get_user_permissions(role: str) -> list:
             "audit:read"
         ],
         "contador": [
+            "companies:read",
             "accounts:create", "accounts:read", "accounts:update",
             "journal:create", "journal:read", "journal:update", "journal:approve",
             "reports:read", "reports:export",

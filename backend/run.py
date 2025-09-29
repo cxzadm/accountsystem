@@ -1,9 +1,5 @@
-#!/usr/bin/env python3
-"""
-Script para ejecutar el servidor de desarrollo
-"""
-
 import uvicorn
+from app.main import app
 from app.config import settings
 
 if __name__ == "__main__":
@@ -12,26 +8,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         reload=settings.debug,
-        log_level="info"
+        workers=1
     )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

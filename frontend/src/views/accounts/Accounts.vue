@@ -11,15 +11,7 @@
           <i class="fas fa-plus me-2"></i>
           Nueva Cuenta
         </button>
-        <button class="btn btn-warning me-2" @click="fixCompleteHierarchy" :disabled="fixingHierarchy">
-          <i class="fas fa-sync-alt me-2"></i>
-          <span v-if="fixingHierarchy">Corrigiendo...</span>
-          <span v-else>Corregir Jerarquía Completa</span>
-        </button>
-        <router-link to="/accounts/new" class="btn btn-outline-primary">
-          <i class="fas fa-edit me-2"></i>
-          Editar Avanzado
-        </router-link>
+        
       </div>
     </div>
 
@@ -318,159 +310,15 @@
       </div>
     </div>
 
-    <!-- Create Account Modal -->
-    <div class="modal fade" :class="{ show: showCreateAccountModal }" :style="{ display: showCreateAccountModal ? 'block' : 'none' }" tabindex="-1">
-      <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title">Nueva Cuenta Contable</h5>
-            <button type="button" class="btn-close" @click="closeCreateAccountModal"></button>
-          </div>
-          <div class="modal-body">
-            <form @submit.prevent="createAccount">
-              <div class="row">
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="code" class="form-label">Código *</label>
-                    <input
-                      type="text"
-                      class="form-control"
-                      id="code"
-                      v-model="newAccount.code"
-                      required
-                      placeholder="Ej: 1010101"
-                    />
-                    <div class="form-text">Código único de la cuenta</div>
-                  </div>
-                </div>
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="name" class="form-label">Nombre *</label>
-                    <input
-                      type="text"
-                      class="form-control"
-                      id="name"
-                      v-model="newAccount.name"
-                      required
-                      placeholder="Ej: CAJA 1"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div class="row">
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="parentCode" class="form-label">Código Padre</label>
-                    <select class="form-select" id="parentCode" v-model="newAccount.parent_code" @change="updateAccountLevel">
-                      <option value="">Seleccionar cuenta padre</option>
-                      <option 
-                        v-for="account in parentAccounts" 
-                        :key="account.id" 
-                        :value="account.code"
-                      >
-                        {{ account.code }} - {{ account.name }}
-                      </option>
-                    </select>
-                    <div class="form-text">Seleccione la cuenta padre para crear una cuenta hija</div>
-                  </div>
-                </div>
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="accountLevel" class="form-label">Nivel</label>
-                    <input
-                      type="number"
-                      class="form-control"
-                      id="accountLevel"
-                      v-model.number="newAccount.level"
-                      min="1"
-                      max="5"
-                      placeholder="1"
-                      readonly
-                    />
-                    <div class="form-text">Nivel calculado automáticamente</div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="row">
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="accountType" class="form-label">Tipo de Relación</label>
-                    <select class="form-select" id="accountType" v-model="newAccount.account_relationship_type">
-                      <option value="P">Padre (P)</option>
-                      <option value="H">Hija (H)</option>
-                    </select>
-                    <div class="form-text">Tipo de cuenta en la jerarquía</div>
-                  </div>
-                </div>
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="suggestedCode" class="form-label">Código Sugerido</label>
-                    <input
-                      type="text"
-                      class="form-control"
-                      id="suggestedCode"
-                      v-model="suggestedCode"
-                      readonly
-                    />
-                    <div class="form-text">Código sugerido basado en la jerarquía</div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="row">
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="accountTypeSelect" class="form-label">Tipo de Cuenta *</label>
-                    <select class="form-select" id="accountTypeSelect" v-model="newAccount.account_type" required>
-                      <option value="">Seleccionar tipo</option>
-                      <option value="activo">Activo</option>
-                      <option value="pasivo">Pasivo</option>
-                      <option value="patrimonio">Patrimonio</option>
-                      <option value="ingresos">Ingresos</option>
-                      <option value="gastos">Gastos</option>
-                      <option value="costos">Costos</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="nature" class="form-label">Naturaleza *</label>
-                    <select class="form-select" id="nature" v-model="newAccount.nature" required>
-                      <option value="">Seleccionar naturaleza</option>
-                      <option value="deudora">Deudora</option>
-                      <option value="acreedora">Acreedora</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div class="mb-3">
-                <label for="description" class="form-label">Descripción</label>
-                <textarea
-                  class="form-control"
-                  id="description"
-                  v-model="newAccount.description"
-                  rows="3"
-                  placeholder="Descripción opcional de la cuenta"
-                ></textarea>
-              </div>
-            </form>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="closeCreateAccountModal">
-              Cancelar
-            </button>
-            <button type="button" class="btn btn-primary" @click="createAccount" :disabled="creating">
-              <span v-if="creating" class="spinner-border spinner-border-sm me-2"></span>
-              {{ creating ? 'Creando...' : 'Crear Cuenta' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div v-if="showCreateAccountModal" class="modal-backdrop fade show"></div>
+    <!-- Account Form Modal -->
+    <AccountFormModal
+      :show="showCreateAccountModal"
+      :account="editingAccount"
+      :company-id="currentCompany?.id"
+      :all-accounts="accounts"
+      :on-save="handleSaveAccount"
+      @close="closeCreateAccountModal"
+    />
   </div>
 
   <!-- Datalist para sugerencias de búsqueda -->
@@ -503,18 +351,22 @@
 <script>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { useToast } from 'vue-toastification'
 import { alerts } from '@/services/alerts'
 import { useCompanyStore } from '@/stores/company'
+import { useBreadcrumb } from '@/composables/useBreadcrumb'
 import api from '@/services/api'
 import { debounce } from 'lodash-es'
+import AccountFormModal from '@/components/AccountFormModal.vue'
 
 export default {
   name: 'Accounts',
+  components: {
+    AccountFormModal
+  },
   setup() {
     const router = useRouter()
-    const toast = useToast()
     const companyStore = useCompanyStore()
+    const { addBreadcrumb, clearBreadcrumbs } = useBreadcrumb()
 
     // State
     const accounts = ref([])
@@ -534,20 +386,9 @@ export default {
 
     // Modal state
     const showCreateAccountModal = ref(false)
-    const creating = ref(false)
-    const fixingHierarchy = ref(false)
+    const editingAccount = ref(null)
+    
     const showSearchHelp = ref(false)
-    const newAccount = reactive({
-      code: '',
-      name: '',
-      account_type: '',
-      nature: '',
-      parent_code: '',
-      level: 1,
-      account_relationship_type: 'H',
-      description: ''
-    })
-    const suggestedCode = ref('')
 
     // Computed
     const visiblePages = computed(() => {
@@ -570,7 +411,7 @@ export default {
     // Methods
     const loadAccounts = async () => {
       if (!currentCompany.value) {
-        toast.error('Selecciona una empresa primero')
+        alerts.error('Error', 'Selecciona una empresa primero')
         return
       }
 
@@ -612,7 +453,7 @@ export default {
         }
       } catch (error) {
         console.error('Error loading accounts:', error)
-        toast.error('Error al cargar cuentas')
+        alerts.error('Error', 'Error al cargar cuentas')
       } finally {
         loading.value = false
       }
@@ -729,7 +570,16 @@ export default {
     }
 
     const editAccount = (account) => {
-      router.push(`/accounts/${account.id}/edit`)
+      editingAccount.value = account
+      showCreateAccountModal.value = true
+      
+      // Agregar breadcrumb dinámico para la cuenta que se está editando
+      addBreadcrumb({
+        label: `Editando: ${account.code} - ${account.name}`,
+        path: null,
+        icon: 'fas fa-edit',
+        active: true
+      })
     }
 
     const viewAccountMovements = (account) => {
@@ -743,7 +593,7 @@ export default {
         }
       })
       
-      toast.info(`Redirigiendo al Mayor General para ver la cuenta ${account.code}`)
+      alerts.info('Redirigiendo', `Mayor General para la cuenta ${account.code}`)
     }
 
     const toggleAccountStatus = async (account) => {
@@ -757,64 +607,20 @@ export default {
       if (ok) {
         try {
           const response = await api.patch(`/accounts/${account.id}/toggle-status`)
-          toast.success(response.data.message)
+          alerts.success('Éxito', response.data.message)
+          
+          // Notificar cambio en el store
+          companyStore.notifyAccountsChanged()
+          
           loadAccounts()
         } catch (error) {
           console.error('Error toggling account status:', error)
-          toast.error(`Error al ${action} cuenta`)
+          alerts.error('Error', `Error al ${action} cuenta`)
         }
       }
     }
 
-    const fixCompleteHierarchy = async () => {
-      const ok = await alerts.confirm({
-        title: '¿Corregir jerarquía completa?',
-        text: 'Esta acción recalculará automáticamente los saldos de TODAS las cuentas padre en toda la jerarquía.',
-        icon: 'question',
-        confirmButtonText: 'Corregir'
-      })
-      
-      if (ok) {
-        fixingHierarchy.value = true
-        try {
-          const response = await api.post('/accounts/fix-complete-hierarchy', {}, {
-            params: { company_id: currentCompany.value.id }
-          })
-          
-          toast.success(response.data.message)
-          
-          // Mostrar detalles de las correcciones
-          if (response.data.corrections && response.data.corrections.length > 0) {
-            console.log('Correcciones realizadas:', response.data.corrections)
-            
-            // Mostrar un resumen de las correcciones más importantes
-            const importantCorrections = response.data.corrections.filter(c => 
-              c.old_balance !== c.new_balance
-            )
-            
-            if (importantCorrections.length > 0) {
-              toast.info(`Se corrigieron ${importantCorrections.length} cuentas padre con saldos incorrectos`)
-              
-              // Mostrar detalles en consola
-              importantCorrections.forEach(correction => {
-                console.log(`✅ ${correction.parent_code} (${correction.parent_name}): ${correction.old_balance} → ${correction.new_balance}`)
-              })
-            } else {
-              toast.success('Todas las cuentas padre ya tenían saldos correctos')
-            }
-          }
-          
-          // Recargar las cuentas para mostrar los cambios
-          await loadAccounts()
-          
-        } catch (error) {
-          console.error('Error fixing complete hierarchy:', error)
-          toast.error('Error al corregir jerarquía completa')
-        } finally {
-          fixingHierarchy.value = false
-        }
-      }
-    }
+    
 
     const getAccountTypeColor = (type) => {
       const colors = {
@@ -866,126 +672,45 @@ export default {
     // Modal methods
     const closeCreateAccountModal = () => {
       showCreateAccountModal.value = false
-      resetNewAccount()
+      editingAccount.value = null
     }
 
-    const resetNewAccount = () => {
-      newAccount.code = ''
-      newAccount.name = ''
-      newAccount.account_type = ''
-      newAccount.nature = ''
-      newAccount.parent_code = ''
-      newAccount.level = 1
-      newAccount.account_relationship_type = 'H'
-      newAccount.description = ''
-      suggestedCode.value = ''
-    }
-
-    const updateAccountLevel = () => {
-      if (!newAccount.parent_code) {
-        newAccount.level = 1
-        return
-      }
-      const parentAccount = accounts.value.find(acc => acc.code === newAccount.parent_code)
-      if (parentAccount) {
-        newAccount.level = (parentAccount.level || 1) + 1
-      } else {
-        newAccount.level = Math.ceil(newAccount.parent_code.length / 2) + 1
-      }
-    }
-
-    const generateSuggestedCode = () => {
-      if (!newAccount.parent_code) {
-        const typeCodes = {
-          activo: '1',
-          pasivo: '2',
-          patrimonio: '3',
-          ingresos: '4',
-          gastos: '5',
-          costos: '6'
-        }
-        suggestedCode.value = typeCodes[newAccount.account_type] || '1'
-        return
-      }
-      
-      const parentAccount = accounts.value.find(acc => acc.code === newAccount.parent_code)
-      if (!parentAccount) {
-        suggestedCode.value = newAccount.parent_code + '01'
-        return
-      }
-      
-      const children = accounts.value.filter(acc => 
-        acc.parent_code === newAccount.parent_code && 
-        acc.code.startsWith(newAccount.parent_code) &&
-        acc.code !== newAccount.parent_code
-      )
-      
-      let nextNumber = 1
-      if (children.length > 0) {
-        const numbers = children.map(child => {
-          const suffix = child.code.substring(newAccount.parent_code.length)
-          return parseInt(suffix) || 0
-        }).filter(num => !isNaN(num))
-        
-        if (numbers.length > 0) {
-          nextNumber = Math.max(...numbers) + 1
-        }
-      }
-      
-      suggestedCode.value = newAccount.parent_code + nextNumber.toString().padStart(2, '0')
-    }
-
-    const createAccount = async () => {
-      if (!newAccount.code || !newAccount.name || !newAccount.account_type || !newAccount.nature) {
-        toast.error('Por favor complete todos los campos obligatorios')
-        return
-      }
-
-      creating.value = true
+    const handleSaveAccount = async (accountData) => {
       try {
-        const accountData = {
-          code: newAccount.code,
-          name: newAccount.name,
-          account_type: newAccount.account_type,
-          nature: newAccount.nature,
-          parent_code: newAccount.parent_code || null,
-          level: newAccount.level,
-          account_relationship_type: newAccount.account_relationship_type,
-          description: newAccount.description || null
+        if (editingAccount.value) {
+          // Actualizar cuenta existente
+          await api.put(`/accounts/${editingAccount.value.id}`, accountData, {
+            params: { company_id: currentCompany.value.id }
+          })
+        } else {
+          // Crear nueva cuenta
+          await api.post('/accounts', accountData, {
+            params: { company_id: currentCompany.value.id }
+          })
         }
-
-        const response = await api.post('/accounts', accountData, {
-          params: { company_id: currentCompany.value.id }
-        })
-
-        toast.success('Cuenta creada exitosamente')
-        closeCreateAccountModal()
-        loadAccounts()
+        
+        // Notificar cambio en el store
+        companyStore.notifyAccountsChanged()
+        
+        await loadAccounts()
+        return true
       } catch (error) {
-        console.error('Error creating account:', error)
-        toast.error('Error al crear la cuenta')
-      } finally {
-        creating.value = false
+        console.error('Error saving account:', error)
+        throw error
       }
     }
 
     // Watchers
-    watch(() => newAccount.parent_code, () => {
-      updateAccountLevel()
-      generateSuggestedCode()
-    })
-
-    watch(() => newAccount.account_relationship_type, () => {
-      generateSuggestedCode()
-    })
-
-    watch(() => newAccount.account_type, () => {
-      generateSuggestedCode()
+    watch(() => companyStore.accountsChanged, () => {
+      // Recargar cuentas cuando hay cambios desde otras vistas
+      loadAccounts()
     })
 
     // Lifecycle
     onMounted(() => {
       loadAccounts()
+      // Limpiar breadcrumbs dinámicos al cargar la vista
+      clearBreadcrumbs()
     })
 
     return {
@@ -996,12 +721,9 @@ export default {
       visiblePages,
       filters,
       showCreateAccountModal,
-      creating,
-      fixingHierarchy,
+      editingAccount,
+      
       showSearchHelp,
-      newAccount,
-      suggestedCode,
-      parentAccounts,
       loadAccounts,
       debouncedSearch,
       changePage,
@@ -1010,7 +732,7 @@ export default {
       editAccount,
       viewAccountMovements,
       toggleAccountStatus,
-      fixCompleteHierarchy,
+      
       getAccountTypeColor,
       getAccountBalance,
       balanceClass,
@@ -1019,9 +741,7 @@ export default {
       getRelationshipClass,
       getAccountRowClass,
       closeCreateAccountModal,
-      updateAccountLevel,
-      generateSuggestedCode,
-      createAccount
+      handleSaveAccount
     }
   }
 }

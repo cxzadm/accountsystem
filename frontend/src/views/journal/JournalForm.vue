@@ -54,7 +54,7 @@
 
             <form @submit.prevent="handleSubmit">
               <div class="row">
-                <div class="col-md-6">
+                <div class="col-md-4">
                   <div class="mb-3">
                     <label for="date" class="form-label">Fecha *</label>
                     <input
@@ -70,7 +70,7 @@
                     </div>
                   </div>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                   <div class="mb-3">
                     <label for="entry_type" class="form-label">Tipo de Asiento</label>
                     <select
@@ -110,7 +110,23 @@
                     </div>
                   </div>
                 </div>
-                
+                <div class="col-md-3">
+                  <div class="mb-3">
+                    <label for="responsable" class="form-label">Responsable *</label>
+                    <input
+                      type="text"
+                      class="form-control"
+                      id="responsable"
+                      v-model="form.responsable"
+                      :class="{ 'is-invalid': errors.responsable }"
+                      placeholder="Nombre del responsable"
+                      required
+                    />
+                    <div class="invalid-feedback" v-if="errors.responsable">
+                      {{ errors.responsable }}
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div class="mb-3">
@@ -417,6 +433,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'vue-toastification'
 import { useCompanyStore } from '@/stores/company'
+import { useAuthStore } from '@/stores/auth'
 import api from '@/services/api'
 
 export default {
@@ -426,6 +443,7 @@ export default {
     const router = useRouter()
     const toast = useToast()
     const companyStore = useCompanyStore()
+    const authStore = useAuthStore()
 
     // State
     const loading = ref(false)
@@ -441,6 +459,7 @@ export default {
       document_type_id: '',
       document_type_code: '',
       entry_number: '',
+      responsable: '',
       lines: [
         { account_code: '', account_name: '', description: '', debit: 0, credit: 0, reference: '' },
         { account_code: '', account_name: '', description: '', debit: 0, credit: 0, reference: '' }
@@ -452,6 +471,13 @@ export default {
     // Computed
     const isEdit = computed(() => !!route.params.id)
     const currentCompany = computed(() => companyStore.getCurrentCompany())
+    const currentUser = computed(() => authStore.user)
+    const userFullName = computed(() => {
+      if (currentUser.value.first_name && currentUser.value.last_name) {
+        return `${currentUser.value.first_name} ${currentUser.value.last_name}`
+      }
+      return currentUser.value.username || ''
+    })
 
     const totalDebit = computed(() => {
       return form.lines.reduce((sum, line) => sum + (parseFloat(line.debit) || 0), 0)
@@ -586,6 +612,7 @@ export default {
         form.entry_number = entry.entry_number || ''
         form.document_type_id = entry.document_type_id || ''
         form.document_type_code = entry.document_type_code || ''
+        form.responsable = entry.responsable || userFullName.value
         form.lines = entry.lines.map(line => ({
           account_code: line.account_code,
           account_name: line.account_name,
@@ -655,6 +682,9 @@ export default {
       if (!form.entry_number) {
         errors.entry_number = 'Debe reservar el número'
       }
+      if (!form.responsable.trim()) {
+        errors.responsable = 'El responsable es requerido'
+      }
 
       if (form.lines.length < 2) {
         errors.lines = 'Debe haber al menos 2 líneas'
@@ -708,6 +738,7 @@ export default {
           entry_type: form.entry_type,
           document_type_id: form.document_type_id,
           document_type_code: form.document_type_code,
+          responsable: form.responsable || userFullName.value,
           lines: form.lines.map(line => ({
             account_code: line.account_code,
             account_name: line.account_name,
@@ -763,6 +794,10 @@ export default {
 
     // Lifecycle
     onMounted(async () => {
+      // Inicializar el responsable con el nombre del usuario actual
+      if (!isEdit.value) {
+        form.responsable = userFullName.value
+      }
       await Promise.all([loadAccounts(), loadDocumentTypes()])
       await loadJournalEntry()
     })

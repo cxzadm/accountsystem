@@ -27,11 +27,7 @@
           <button class="btn btn-outline-secondary" @click="collapseAllEntries"><i
               class="fas fa-angle-double-up me-1"></i> Contraer todo</button>
         </div>
-        <button class="btn btn-warning me-2" @click="fixCompleteHierarchy" :disabled="fixingHierarchy">
-          <i class="fas fa-sync-alt me-2"></i>
-          <span v-if="fixingHierarchy">Corrigiendo...</span>
-          <span v-else>Corregir Jerarquía Completa</span>
-        </button>
+        
         <div class="btn-group">
           <button class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
             <i class="fas fa-download me-2"></i> Exportar
@@ -703,7 +699,7 @@ export default {
     // State
     const loading = ref(false)
     const calculatingBalances = ref(false)
-    const fixingHierarchy = ref(false)
+    
     const ledger = ref([])
     const ledgerEntries = ref([]) // Asientos contables mayorizados
     const summary = ref(null)
@@ -933,67 +929,7 @@ export default {
       loadLedger()
     }
 
-    const fixCompleteHierarchy = async () => {
-      console.log('🚀 INICIANDO corrección manual de jerarquía completa')
-      console.log('🔍 Método fixCompleteHierarchy llamado correctamente')
-
-      const ok = await alerts.confirm({
-        title: '¿Corregir jerarquía completa?',
-        text: 'Esta acción recalculará automáticamente los saldos de TODAS las cuentas padre en toda la jerarquía.',
-        icon: 'question',
-        confirmButtonText: 'Corregir'
-      })
-
-      console.log('📋 Confirmación del usuario:', ok)
-
-      if (ok) {
-        fixingHierarchy.value = true
-        console.log('🔄 Ejecutando corrección de jerarquía...')
-        try {
-          console.log('📡 Enviando petición a:', '/accounts/fix-complete-hierarchy')
-          console.log('🏢 Company ID:', currentCompany.value.id)
-
-          const response = await api.post('/accounts/fix-complete-hierarchy', {}, {
-            params: { company_id: currentCompany.value.id }
-          })
-
-          console.log('✅ Respuesta recibida:', response.data)
-
-          toast.success(response.data.message)
-
-          // Mostrar detalles de las correcciones
-          if (response.data.corrections && response.data.corrections.length > 0) {
-            console.log('Correcciones realizadas:', response.data.corrections)
-
-            // Mostrar un resumen de las correcciones más importantes
-            const importantCorrections = response.data.corrections.filter(c =>
-              c.old_balance !== c.new_balance
-            )
-
-            if (importantCorrections.length > 0) {
-              toast.info(`Se corrigieron ${importantCorrections.length} cuentas padre con saldos incorrectos`)
-
-              // Mostrar detalles en consola
-              importantCorrections.forEach(correction => {
-                console.log(`✅ ${correction.parent_code} (${correction.parent_name}): ${correction.old_balance} → ${correction.new_balance}`)
-              })
-            }
-          }
-
-          // Recargar el ledger para mostrar los cambios
-          await loadLedger()
-
-        } catch (error) {
-          console.error('❌ ERROR al corregir jerarquía:', error)
-          console.error('📋 Detalles del error:', error.response?.data)
-          console.error('📋 Status code:', error.response?.status)
-          toast.error(`Error al corregir jerarquía: ${error.response?.data?.detail || error.message}`)
-        } finally {
-          fixingHierarchy.value = false
-          console.log('🏁 FINALIZADO corrección de jerarquía')
-        }
-      }
-    }
+    
 
     const viewAccountLedger = async (account) => {
       try {
@@ -1611,7 +1547,9 @@ export default {
         entry_type: entry.entry_type,
         date: entry.date,
         description: entry.description,
-        lines: entry.lines
+        lines: entry.lines,
+        responsable: entry.responsable,
+        status: entry.status
       }
       selectedEntryForModal.value = normalized
       const el = document.getElementById('entryDetailModal')
@@ -1704,13 +1642,12 @@ export default {
       expanded,
       loading,
       calculatingBalances,
-      fixingHierarchy,
       filters,
       filteredLedger,
       filteredLedgerEntries,
       showAccountSummary,
       loadLedger,
-      fixCompleteHierarchy,
+      
       applyQuickSearch,
       debouncedSearch,
       showSearchHelp,

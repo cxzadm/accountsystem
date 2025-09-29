@@ -83,6 +83,7 @@
                 <th>Número</th>
                 <th>Fecha</th>
                 <th>Descripción</th>
+                <th>Responsable</th>
                 <th>Tipo</th>
                 <th>Estado</th>
                 <th>Débito</th>
@@ -99,7 +100,7 @@
             </thead>
             <tbody>
               <tr v-if="loading">
-                <td :colspan="filters.status !== 'reserved' ? 8 : 5" class="text-center py-4">
+                <td :colspan="filters.status !== 'reserved' ? 9 : 5" class="text-center py-4">
                   <div class="spinner-border text-primary" role="status">
                     <span class="visually-hidden">Cargando...</span>
                   </div>
@@ -108,7 +109,7 @@
               <template v-else>
                 <template v-if="filters.status !== 'reserved'">
                   <tr v-if="entries.length === 0">
-                    <td colspan="8" class="text-center py-4 text-muted">
+                    <td colspan="9" class="text-center py-4 text-muted">
                       No se encontraron asientos
                     </td>
                   </tr>
@@ -124,6 +125,11 @@
                           {{ entry.lines.length }} líneas
                         </div>
                       </div>
+                    </td>
+                    <td>
+                      <span class="badge bg-info">
+                        {{ entry.responsable || 'Sin responsable' }}
+                      </span>
                     </td>
                     <td>
                       <span :class="`badge bg-${getEntryTypeColor(entry.entry_type)}`">

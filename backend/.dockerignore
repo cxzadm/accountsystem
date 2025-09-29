@@ -1,0 +1,35 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+
+# Virtual environments
+venv/
+.venv/
+ENV/
+.env
+
+# VCS
+.git/
+.gitignore
+
+# Logs / data
+*.log
+*.db
+*.sqlite
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large samples
+plan_cuentas_ejemplo_*.xlsx
+
+# Local scripts not needed in image
+scripts/

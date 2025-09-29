@@ -15,22 +15,38 @@ class LedgerService:
         Mayorizar un asiento contable (aplicar las transacciones a las cuentas)
         """
         try:
+            print(f"🔍 Iniciando post_journal_entry para asiento: {journal_entry.entry_number}")
+            print(f"📋 Estado del asiento: {journal_entry.status}")
+            print(f"🏢 Company ID: {company_id}")
+            print(f"👤 Created by: {created_by}")
+            
             # Verificar que el asiento esté en estado DRAFT
             if journal_entry.status != "draft":
+                print(f"❌ Asiento no está en estado DRAFT: {journal_entry.status}")
                 raise ValueError("Solo se pueden mayorizar asientos en estado DRAFT")
+            
+            print(f"✅ Asiento en estado DRAFT, continuando...")
             
             # Verificar si ya existen entradas del ledger para este asiento
             existing_entries = await LedgerEntry.find(
                 LedgerEntry.journal_entry_id == str(journal_entry.id)
             ).to_list()
             
+            print(f"🔍 Entradas existentes encontradas: {len(existing_entries)}")
+            
             if existing_entries:
+                print(f"🔄 Actualizando entradas existentes...")
                 # Si ya existen entradas, actualizarlas en lugar de crear nuevas
                 return await LedgerService._update_existing_ledger_entries(journal_entry, company_id, created_by)
             
             # Procesar cada línea del asiento
+            print(f"📋 Procesando {len(journal_entry.lines)} líneas del asiento...")
             affected_account_ids = set()
-            for line in journal_entry.lines:
+            
+            for i, line in enumerate(journal_entry.lines):
+                print(f"🔍 Procesando línea {i+1}: {line.account_code} - {line.account_name}")
+                print(f"   💰 Débito: {line.debit}, Crédito: {line.credit}")
+                
                 # Buscar la cuenta
                 account = await Account.find_one(
                     Account.code == line.account_code,
@@ -38,9 +54,13 @@ class LedgerService:
                 )
                 
                 if not account:
+                    print(f"❌ Cuenta no encontrada: {line.account_code}")
                     raise ValueError(f"Cuenta {line.account_code} no encontrada")
                 
+                print(f"✅ Cuenta encontrada: {account.code} - {account.name}")
+                
                 # Crear entrada en el mayor
+                print(f"📝 Creando entrada en el mayor...")
                 ledger_entry = LedgerEntry(
                     account_id=str(account.id),
                     account_code=line.account_code,
@@ -56,15 +76,22 @@ class LedgerService:
                     created_by=created_by
                 )
                 
+                print(f"✅ Entrada del mayor creada en memoria")
+                
                 # Calcular saldos acumulados
+                print(f"🧮 Calculando saldos acumulados...")
                 await LedgerService._calculate_running_balances(ledger_entry, account)
                 
                 # Guardar entrada en el mayor
+                print(f"💾 Guardando entrada en la base de datos...")
                 await ledger_entry.insert()
+                print(f"✅ Entrada guardada exitosamente")
                 
                 # Actualizar saldos de la cuenta
+                print(f"🔄 Actualizando saldos de la cuenta...")
                 await LedgerService._update_account_balances(account, line.debit, line.credit)
                 affected_account_ids.add(str(account.id))
+                print(f"✅ Línea {i+1} procesada exitosamente")
             
             # Recalcular saldos acumulados para todas las cuentas afectadas
             for account_id in affected_account_ids:
@@ -81,14 +108,19 @@ class LedgerService:
             print(f"🏁 FINALIZADO cálculo automático de saldos padre post-mayorización")
 
             # Marcar el asiento como POSTED
+            print(f"📝 Marcando asiento como POSTED...")
             journal_entry.status = "posted"
             journal_entry.updated_at = datetime.now()
             await journal_entry.save()
+            print(f"✅ Asiento marcado como POSTED exitosamente")
             
+            print(f"🎉 Mayorización completada exitosamente para asiento: {journal_entry.entry_number}")
             return True
             
         except Exception as e:
-            print(f"Error al mayorizar asiento: {e}")
+            print(f"❌ Error al mayorizar asiento: {e}")
+            import traceback
+            print(f"📋 Traceback completo: {traceback.format_exc()}")
             return False
     
     @staticmethod
@@ -419,7 +451,7 @@ class LedgerService:
                     running_debit_balance=e.get("running_debit_balance", 0),
                     running_credit_balance=e.get("running_credit_balance", 0),
                     created_at=e.get("created_at"),
-                    created_by=e.get("created_by") or "",
+                    created_by=e.get("created_by") or "system",
                 )
             )
 

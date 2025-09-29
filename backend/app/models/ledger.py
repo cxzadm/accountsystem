@@ -30,13 +30,7 @@ class LedgerEntry(Document):
     
     class Settings:
         name = "ledger_entries"
-        indexes = [
-            "account_id",
-            "company_id",
-            "date",
-            "entry_type",
-            "journal_entry_id"
-        ]
+        indexes = []
 
 class LedgerEntryCreate(BaseModel):
     account_id: str

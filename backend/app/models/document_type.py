@@ -31,7 +31,7 @@ class DocumentType(Document):
 
     class Settings:
         name = "document_types"
-        indexes = ["code", "company_id", "is_active"]
+        indexes = []
 
 
 class DocumentTypeCreate(BaseModel):

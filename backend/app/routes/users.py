@@ -226,7 +226,7 @@ async def delete_user(
     request: Request,
     current_user: User = Depends(require_permission("users:delete"))
 ):
-    """Eliminar usuario (soft delete)"""
+    """Eliminar usuario (hard delete)"""
     user = await User.get(user_id)
     if not user:
         raise HTTPException(
@@ -240,21 +240,29 @@ async def delete_user(
             detail="No puedes eliminar tu propio usuario"
         )
     
-    # Soft delete - cambiar status a inactive
-    user.status = "inactive"
-    user.updated_at = datetime.now()
-    await user.save()
+    # Capturar datos previos para auditoría antes de eliminar
+    old_values = {
+        "username": user.username,
+        "email": user.email,
+        "role": user.role.value if hasattr(user.role, "value") else str(user.role),
+        "status": user.status.value if hasattr(user.status, "value") else str(user.status)
+    }
+    user_id_str = str(user.id)
+    username_str = user.username
+
+    # Hard delete - eliminar documento de la base de datos
+    await user.delete()
     
     # Log de auditoría
     await log_audit(
         user=current_user,
         action=AuditAction.DELETE,
         module=AuditModule.USERS,
-        description=f"Usuario eliminado: {user.username}",
-        resource_id=str(user.id),
+        description=f"Usuario eliminado: {username_str}",
+        resource_id=user_id_str,
         resource_type="user",
-        old_values={"status": "active"},
-        new_values={"status": "inactive"},
+        old_values=old_values,
+        new_values={"deleted": True},
         ip_address=request.client.host,
         user_agent=request.headers.get("user-agent", "Unknown")
     )

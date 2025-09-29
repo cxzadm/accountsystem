@@ -8,6 +8,7 @@ export const useCompanyStore = defineStore('company', () => {
   const companies = ref([])
   const currentCompany = ref(null)
   const loading = ref(false)
+  const accountsChanged = ref(0) // Contador para notificar cambios en cuentas
 
   // Actions
   const fetchCompanies = async (params = {}) => {
@@ -26,8 +27,8 @@ export const useCompanyStore = defineStore('company', () => {
       return response.data
     } catch (error) {
       console.error('Error fetching companies:', error)
-      // Si es un error 401/403, redirigir al login
-      if (error.response?.status === 401 || error.response?.status === 403) {
+      // Solo cerrar sesión en 401; en 403 no cerrar sesión, solo informar
+      if (error.response?.status === 401) {
         authStore.logout()
       }
       throw error
@@ -109,11 +110,16 @@ export const useCompanyStore = defineStore('company', () => {
     return currentCompany.value
   }
 
+  const notifyAccountsChanged = () => {
+    accountsChanged.value++
+  }
+
   return {
     // State
     companies,
     currentCompany,
     loading,
+    accountsChanged,
     
     // Actions
     fetchCompanies,
@@ -122,6 +128,7 @@ export const useCompanyStore = defineStore('company', () => {
     updateCompany,
     deleteCompany,
     setCurrentCompany,
-    getCurrentCompany
+    getCurrentCompany,
+    notifyAccountsChanged
   }
 })

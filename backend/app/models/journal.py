@@ -36,6 +36,7 @@ class JournalEntry(Document):
     total_credit: float = 0.0
     company_id: str
     created_by: str
+    responsable: Optional[str] = None  # Nombre del usuario responsable
     approved_by: Optional[str] = None
     approved_at: Optional[datetime] = None
     created_at: datetime = datetime.now()
@@ -43,13 +44,7 @@ class JournalEntry(Document):
     
     class Settings:
         name = "journal_entries"
-        indexes = [
-            "entry_number",
-            "company_id",
-            "date",
-            "status",
-            "entry_type"
-        ]
+        indexes = []
 
 class JournalEntryCreate(BaseModel):
     entry_number: str
@@ -59,6 +54,7 @@ class JournalEntryCreate(BaseModel):
     document_type_id: Optional[str] = None
     document_type_code: Optional[str] = None
     lines: List[JournalLine]
+    responsable: Optional[str] = None
 
 class JournalEntryUpdate(BaseModel):
     date: Optional[datetime] = None
@@ -67,6 +63,7 @@ class JournalEntryUpdate(BaseModel):
     document_type_id: Optional[str] = None
     document_type_code: Optional[str] = None
     lines: Optional[List[JournalLine]] = None
+    responsable: Optional[str] = None
 
 class JournalEntryResponse(BaseModel):
     id: str
@@ -82,6 +79,7 @@ class JournalEntryResponse(BaseModel):
     total_credit: float
     company_id: str
     created_by: str
+    responsable: Optional[str]
     approved_by: Optional[str]
     approved_at: Optional[datetime]
     created_at: datetime

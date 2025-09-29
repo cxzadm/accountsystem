@@ -193,7 +193,7 @@
 </template>
 
 <script>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
 import { useToast } from 'vue-toastification'
@@ -207,6 +207,7 @@ export default {
     const authStore = useAuthStore()
     const companyStore = useCompanyStore()
     const toast = useToast()
+    const canReadCompanies = computed(() => authStore.hasPermission && authStore.hasPermission('companies:read'))
 
     // Refs
     const journalChart = ref(null)
@@ -231,9 +232,13 @@ export default {
           return
         }
 
-        // Load companies
-        const companies = await companyStore.fetchCompanies()
-        stats.companies = companies.length
+        // Load companies solo si tiene permiso
+        if (canReadCompanies.value) {
+          const companies = await companyStore.fetchCompanies()
+          stats.companies = companies.length
+        } else {
+          stats.companies = 0
+        }
 
         // TODO: Load other stats from API
         stats.journalEntries = 0
@@ -352,6 +357,7 @@ export default {
       recentActivity,
       journalChart,
       accountTypesChart,
+      canReadCompanies,
       refreshData,
       formatDate
     }

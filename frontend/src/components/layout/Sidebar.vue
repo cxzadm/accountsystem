@@ -126,6 +126,12 @@
                     <span v-if="!isCollapsed">Auditoría</span>
                   </router-link>
                 </li>
+                <li class="nav-item" v-if="hasAnyRole(['admin'])">
+                  <router-link class="nav-link" to="/admin/backend-config" active-class="active" :title="isCollapsed ? 'Config. Backend' : ''">
+                    <i class="fas fa-server" :class="{ 'me-2': !isCollapsed }"></i>
+                    <span v-if="!isCollapsed">Config. Backend</span>
+                  </router-link>
+                </li>
               </ul>
             </div>
           </li>

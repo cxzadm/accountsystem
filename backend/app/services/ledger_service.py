@@ -512,7 +512,57 @@ class LedgerService:
         # Obtener todas las cuentas activas de la empresa
         accounts = await Account.find(account_query).to_list()
 
+        # Ordenar jerárquicamente igual que en Plan de Cuentas
+        def _sort_accounts_hierarchically(accounts_list):
+            if not accounts_list:
+                return []
+            account_dict = {acc.code: acc for acc in accounts_list}
+
+            def get_hierarchical_path(account):
+                if not getattr(account, "parent_code", None):
+                    return [account.code]
+                path = []
+                current_code = account.code
+                # Recorrer hacia la raíz usando parent_code conocido cuando esté disponible
+                visited = set()
+                while current_code in account_dict and current_code not in visited:
+                    visited.add(current_code)
+                    current_account = account_dict[current_code]
+                    path.insert(0, current_code)
+                    if not getattr(current_account, "parent_code", None):
+                        break
+                    current_code = current_account.parent_code
+                return path
+
+            def sort_key(account):
+                hierarchical_path = get_hierarchical_path(account)
+                path_numbers = []
+                for code in hierarchical_path:
+                    nums = []
+                    for ch in code:
+                        if ch.isdigit():
+                            nums.append(int(ch))
+                    path_numbers.append(tuple(nums))
+                return path_numbers
+
+            return sorted(accounts_list, key=sort_key)
+
+        accounts = _sort_accounts_hierarchically(accounts)
+
         print(f"📊 Cuentas encontradas: {len(accounts)}")
+        print(f"📋 Códigos de cuentas encontradas: {[acc.code for acc in accounts]}")
+        
+        # Verificar específicamente las cuentas problemáticas
+        target_codes = ["101010202", "101010203"]  # Pichincha y Guayaquil
+        for code in target_codes:
+            found = any(acc.code == code for acc in accounts)
+            print(f"🔍 Cuenta {code} encontrada: {found}")
+            if found:
+                acc = next(acc for acc in accounts if acc.code == code)
+                print(f"   - Nombre: {acc.name}")
+                print(f"   - Activa: {acc.is_active}")
+                print(f"   - Saldo inicial D: {acc.initial_debit_balance}")
+                print(f"   - Saldo inicial C: {acc.initial_credit_balance}")
 
         # Obtener todas las entradas del ledger para la empresa
         from motor.motor_asyncio import AsyncIOMotorClient
@@ -557,6 +607,45 @@ class LedgerService:
                 entries_by_account[account_id] = []
             entries_by_account[account_id].append(entry)
         
+        # Si no hay entradas del ledger, buscar en asientos aprobados
+        if not ledger_entries:
+            print("🔄 No hay entradas del ledger, buscando en asientos aprobados...")
+            from app.models.journal import JournalEntry
+            
+            # Obtener asientos aprobados
+            journal_entries = await JournalEntry.find(
+                JournalEntry.company_id == company_id,
+                JournalEntry.status == "posted"
+            ).to_list()
+            
+            print(f"📊 Asientos aprobados encontrados: {len(journal_entries)}")
+            
+            # Procesar líneas de asientos aprobados
+            for journal_entry in journal_entries:
+                for line in journal_entry.lines:
+                    # Buscar cuenta por código
+                    account = next((acc for acc in accounts if acc.code == line.account_code), None)
+                    if account:
+                        account_id = str(account.id)
+                        if account_id not in entries_by_account:
+                            entries_by_account[account_id] = []
+                        
+                        # Crear entrada virtual del ledger
+                        virtual_entry = {
+                            "account_id": account_id,
+                            "account_code": line.account_code,
+                            "account_name": line.account_name,
+                            "date": journal_entry.date,
+                            "description": line.description,
+                            "reference": line.reference,
+                            "debit_amount": line.debit,
+                            "credit_amount": line.credit,
+                            "journal_entry_id": str(journal_entry.id),
+                            "entry_number": journal_entry.entry_number
+                        }
+                        entries_by_account[account_id].append(virtual_entry)
+                        print(f"   📝 Entrada virtual creada para {line.account_code}: D={line.debit}, C={line.credit}")
+        
         client.close()
 
         # Crear resumen del mayor para cada cuenta
@@ -599,12 +688,24 @@ class LedgerService:
                 
                 ledgers.append(ledger_summary)
                 
+                # Log específico para cuentas problemáticas
+                if account.code in ["101010202", "101010203"]:
+                    print(f"✅ Cuenta {account.code} agregada al ledger:")
+                    print(f"   - Saldo inicial D: {account.initial_debit_balance}")
+                    print(f"   - Saldo inicial C: {account.initial_credit_balance}")
+                    print(f"   - Saldo actual D: {account.current_debit_balance}")
+                    print(f"   - Saldo actual C: {account.current_credit_balance}")
+                    print(f"   - Total débitos: {total_debits}")
+                    print(f"   - Total créditos: {total_credits}")
+                    print(f"   - Saldo neto: {net_balance}")
+                
             except Exception as e:
                 print(f"Error al obtener mayor de cuenta {account.code}: {e}")
                 continue
 
         # Aplicar filtros de saldo y movimientos
         if search_filters:
+            print(f"🔍 Aplicando filtros de búsqueda: {search_filters}")
             filtered_ledgers = []
             for ledger in ledgers:
                 include = True
@@ -649,12 +750,27 @@ class LedgerService:
                     if abs(total_value - search_filters['exact_value']) > 0.01:  # Tolerancia para decimales
                         include = False
                 
+                # Log específico para cuentas problemáticas en filtros
+                if ledger.account_code in ["101010202", "101010203"]:
+                    print(f"🔍 Filtro para cuenta {ledger.account_code}:")
+                    print(f"   - Incluida: {include}")
+                    print(f"   - Saldo neto: {ledger.net_balance}")
+                    print(f"   - Movimientos: {ledger.entry_count}")
+                    print(f"   - Total valor: {total_value}")
+                
                 if include:
                     filtered_ledgers.append(ledger)
             
             ledgers = filtered_ledgers
 
         print(f"✅ Mayor general generado: {len(ledgers)} cuentas")
+        
+        # Verificar si las cuentas problemáticas están en el resultado final
+        final_codes = [ledger.account_code for ledger in ledgers]
+        for code in ["101010202", "101010203"]:
+            found = code in final_codes
+            print(f"🔍 Cuenta {code} en resultado final: {found}")
+        
         return ledgers
 
     @staticmethod

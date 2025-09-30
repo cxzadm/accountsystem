@@ -724,17 +724,41 @@ export default {
 
     const filteredLedger = computed(() => {
       let filtered = ledger.value
+      
+      console.log('🔍 Filtros aplicados:', {
+        account_type: filters.account_type,
+        show_only: filters.show_only,
+        total_ledger: ledger.value.length
+      })
+      console.log('📊 Cuentas antes de filtrar:', ledger.value.length)
 
       // Filtrar por tipo de cuenta
       if (filters.account_type) {
         filtered = filtered.filter(account => account.account_type === filters.account_type)
+        console.log('📊 Después de filtrar por tipo:', filtered.length)
       }
 
       // Filtrar por movimientos
       if (filters.show_only === 'with_movements') {
         filtered = filtered.filter(account => account.entry_count > 0)
+        console.log('📊 Después de filtrar por movimientos (con):', filtered.length)
       } else if (filters.show_only === 'without_movements') {
         filtered = filtered.filter(account => !account.entry_count || account.entry_count === 0)
+        console.log('📊 Después de filtrar por movimientos (sin):', filtered.length)
+      }
+
+      console.log('📊 Cuentas finales en filteredLedger:', filtered.length)
+      
+      // Verificar específicamente las cuentas problemáticas
+      const targetCodes = ['101010202', '101010203'] // Pichincha y Guayaquil
+      for (const code of targetCodes) {
+        const found = filtered.find(acc => acc.account_code === code)
+        console.log(`🔍 Cuenta ${code} en filteredLedger:`, found ? 'SÍ' : 'NO')
+        if (found) {
+          console.log(`   - Nombre: ${found.account_name}`)
+          console.log(`   - Saldo: ${found.net_balance}`)
+          console.log(`   - Movimientos: ${found.entry_count}`)
+        }
       }
 
       return filtered
@@ -794,6 +818,21 @@ export default {
         summary.value = summaryResponse.data
 
         console.log('✅ Mayor general cargado con datos consistentes (cálculo automático ejecutado en backend)')
+        
+        // Verificar específicamente las cuentas problemáticas en los datos recibidos
+        const targetCodes = ['101010202', '101010203'] // Pichincha y Guayaquil
+        console.log('🔍 Verificando cuentas específicas en datos recibidos:')
+        for (const code of targetCodes) {
+          const found = ledgerResponse.data.find(acc => acc.account_code === code)
+          console.log(`   Cuenta ${code}:`, found ? 'ENCONTRADA' : 'NO ENCONTRADA')
+          if (found) {
+            console.log(`     - Nombre: ${found.account_name}`)
+            console.log(`     - Saldo: ${found.net_balance}`)
+            console.log(`     - Movimientos: ${found.entry_count}`)
+            console.log(`     - Tipo: ${found.account_type}`)
+            console.log(`     - Nivel: ${found.level}`)
+          }
+        }
       } catch (error) {
         console.error('Error loading ledger:', error)
         console.error('Error details:', error.response?.data)
@@ -928,6 +967,8 @@ export default {
       filters.show_only = ''
       loadLedger()
     }
+
+    
 
     
 
@@ -1613,6 +1654,13 @@ export default {
       const hasChildren = ledger.value.some(acc => acc.parent_code === account.account_code)
       return hasChildren ? 'table-info' : ''
     }
+
+    // Watchers
+    watch(() => companyStore.accountsChanged, () => {
+      // Recargar mayor general cuando hay cambios en las cuentas
+      console.log('🔄 Cambios detectados en cuentas, recargando Mayor General...')
+      loadLedger()
+    })
 
     // Lifecycle
     onMounted(() => {

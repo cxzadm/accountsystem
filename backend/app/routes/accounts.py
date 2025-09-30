@@ -430,7 +430,12 @@ async def create_account(
     
     # Derivar jerarquía si no viene
     derived_parent, derived_level = _derive_parent_and_level_from_code(account_data.code)
-    parent_code = account_data.parent_code if account_data.parent_code is not None else derived_parent
+    # Normalizar parent_code: convertir cadenas vacías a None
+    if account_data.parent_code is not None and isinstance(account_data.parent_code, str):
+        cleaned_parent = account_data.parent_code.strip()
+        parent_code = cleaned_parent if cleaned_parent else derived_parent
+    else:
+        parent_code = derived_parent
     
     # Usar nivel derivado si no se proporciona o si el proporcionado es 1 pero el código sugiere un nivel más alto
     if account_data.level is None or account_data.level == 1:
@@ -451,10 +456,15 @@ async def create_account(
         parent_code=parent_code,
         level=level,
         company_id=company_id,
-        is_editable=account_data.is_editable,
-        initial_debit_balance=account_data.initial_debit_balance,
-        initial_credit_balance=account_data.initial_credit_balance,
-        created_by=str(current_user.id)
+        is_active=True,
+        is_editable=(account_data.is_editable if account_data.is_editable is not None else True),
+        initial_debit_balance=float(account_data.initial_debit_balance or 0.0),
+        initial_credit_balance=float(account_data.initial_credit_balance or 0.0),
+        current_debit_balance=0.0,
+        current_credit_balance=0.0,
+        created_by=str(current_user.id),
+        created_at=datetime.now(),
+        updated_at=datetime.now()
     )
     
     await new_account.insert()
@@ -966,6 +976,17 @@ async def import_initial_balances(
         user_agent=request.headers.get("user-agent", "Unknown")
     )
     
+    # Recalcular saldos de cuentas padre después de importar saldos iniciales
+    if total_updated > 0:
+        try:
+            from app.services.ledger_service import LedgerService
+            print(f"🔄 Ejecutando cálculo automático de saldos padre después de importar saldos iniciales...")
+            result = await LedgerService._fix_complete_hierarchy_internal(company_id)
+            print(f"✅ Cálculo automático de saldos padre completado: {result['updated_count']} cuentas actualizadas")
+        except Exception as e:
+            print(f"⚠️ Error en cálculo automático de saldos padre: {e}")
+            # No interrumpir la operación si falla el cálculo automático
+
     # Fetch all active accounts after import for immediate frontend update
     all_accounts = await Account.find(
         Account.company_id == company_id,

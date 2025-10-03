@@ -17,6 +17,7 @@ from app.models.document_reservation import DocumentNumberReservation
 from app.routes import auth, users, companies, accounts, journal, reports, sri, ledger
 from app.routes import document_types
 from app.routes import document_reservations
+from app.routes import database
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -52,12 +53,26 @@ app = FastAPI(
 )
 
 # CORS (permitir todos los orígenes en desarrollo; usamos Bearer tokens, no cookies)
+# CORS
+# En desarrollo: permitir Vite dev server y mismo host explícitamente (mitiga proxies intermedios que quitan headers)
+allowed_origins = [
+    "*",
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:5175",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+    "http://127.0.0.1:5175",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=600,
 )
 
 # Routes
@@ -71,6 +86,7 @@ app.include_router(reports.router, prefix="/api/reports", tags=["Reportes"])
 app.include_router(sri.router, prefix="/api/sri", tags=["Declaraciones SRI"])
 app.include_router(document_types.router, prefix="/api", tags=["Tipos de Documentos"])
 app.include_router(document_reservations.router, prefix="/api", tags=["Reservas de Documentos"])
+app.include_router(database.router, prefix="/api/database", tags=["Base de Datos"])
 
 @app.get("/")
 async def root():
@@ -87,7 +103,7 @@ async def health_check():
 if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",
-        host="0.0.0.0",
-        port=8000,
+        host=settings.backend_host,
+        port=settings.backend_port,
         reload=settings.debug
     )

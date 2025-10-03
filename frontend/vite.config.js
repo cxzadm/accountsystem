@@ -1,13 +1,7 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
-
-// Configuración del backend
-const BACKEND_CONFIG = {
-  IP: '192.168.68.113',
-  PORT: '8000',
-  PROTOCOL: 'http'
-}
+import { BACKEND_CONFIG, FRONTEND_CONFIG } from '../scripts/vite-config-loader.js'
 
 export default defineConfig({
   plugins: [vue()],
@@ -17,15 +11,15 @@ export default defineConfig({
     }
   },
   server: {
-    port: 5173,
-    host: '0.0.0.0',
+    port: FRONTEND_CONFIG.PORT,
+    host: FRONTEND_CONFIG.HOST,
     cors: true,
     strictPort: true,
-    allowedHosts: ['accescontserver.sytes.net', '192.168.68.113'],
+    allowedHosts: FRONTEND_CONFIG.ALLOWED_HOSTS,
     hmr: {
       host: BACKEND_CONFIG.IP,
       protocol: 'ws',
-      clientPort: 5173
+      clientPort: FRONTEND_CONFIG.PORT
     }
   }
 })

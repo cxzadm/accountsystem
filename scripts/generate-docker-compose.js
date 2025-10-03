@@ -1,4 +1,15 @@
-version: '3.8'
+const fs = require('fs');
+const path = require('path');
+
+// Leer la configuración centralizada
+const configPath = path.join(__dirname, '..', 'config.json');
+const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+
+// Usar configuración de producción para Docker
+const prodConfig = config.production;
+
+// Generar docker-compose.yml
+const dockerComposeContent = `version: '3.8'
 
 services:
   mongodb:
@@ -6,7 +17,7 @@ services:
     container_name: sistema-contable-mongodb
     restart: unless-stopped
     ports:
-      - "27017:27017"
+      - "${prodConfig.database.port}:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
       MONGO_INITDB_ROOT_PASSWORD: password123
@@ -24,7 +35,7 @@ services:
     container_name: sistema-contable-backend
     restart: unless-stopped
     ports:
-      - "8006:8006"
+      - "${prodConfig.backend.port}:${prodConfig.backend.port}"
     environment:
       - MONGODB_URL=mongodb://admin:password123@mongodb:27017/sistema_contable_ec?authSource=admin
       - SECRET_KEY=tu-clave-secreta-super-segura-para-produccion
@@ -36,7 +47,7 @@ services:
       - sistema-contable-network
     volumes:
       - ./backend:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8006
+    command: uvicorn app.main:app --host ${prodConfig.backend.host} --port ${prodConfig.backend.port}
 
   frontend:
     build:
@@ -45,7 +56,7 @@ services:
     container_name: sistema-contable-frontend
     restart: unless-stopped
     ports:
-      - "5176:80"
+      - "${prodConfig.frontend.port}:80"
     depends_on:
       - backend
     networks:
@@ -57,3 +68,14 @@ volumes:
 networks:
   sistema-contable-network:
     driver: bridge
+`;
+
+// Escribir el archivo docker-compose.yml
+const dockerComposePath = path.join(__dirname, '..', 'docker-compose.yml');
+fs.writeFileSync(dockerComposePath, dockerComposeContent);
+
+console.log('✅ docker-compose.yml generado exitosamente con la configuración centralizada');
+console.log(`📊 Configuración aplicada:`);
+console.log(`   - Backend: puerto ${prodConfig.backend.port}`);
+console.log(`   - Frontend: puerto ${prodConfig.frontend.port}`);
+console.log(`   - Database: puerto ${prodConfig.database.port}`);

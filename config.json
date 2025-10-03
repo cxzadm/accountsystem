@@ -1,0 +1,43 @@
+{
+  "development": {
+    "frontend": {
+      "port": 5176,
+      "host": "0.0.0.0",
+      "allowedHosts": [
+        "accescontserver.sytes.net",
+        "localhost",
+        "127.0.0.1",
+        "172.16.0.2"
+      ]
+    },
+    "backend": {
+      "port": 8006,
+      "host": "0.0.0.0",
+      "ip": "172.16.0.2",
+      "protocol": "http"
+    },
+    "database": {
+      "port": 27017,
+      "host": "localhost"
+    }
+  },
+  "production": {
+    "frontend": {
+      "port": 5176,
+      "host": "0.0.0.0",
+      "allowedHosts": [
+        "accescontserver.sytes.net"
+      ]
+    },
+    "backend": {
+      "port": 8006,
+      "host": "0.0.0.0",
+      "ip": "172.16.0.2",
+      "protocol": "http"
+    },
+    "database": {
+      "port": 27017,
+      "host": "mongodb"
+    }
+  }
+}

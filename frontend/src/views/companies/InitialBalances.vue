@@ -749,6 +749,9 @@ export default {
         alerts.success('Éxito', response.data.message)
         changedAccounts.value.clear()
 
+        // Notificar cambio en el store para sincronizar con otras vistas
+        companyStore.notifyAccountsChanged()
+
         // Ejecutar cálculo automático de saldos padre después de guardar
         try {
           console.log('🔄 Ejecutando cálculo automático de saldos padre después de guardar...')
@@ -1071,6 +1074,9 @@ export default {
           alerts.warning('Advertencia', `${response.data.errors.length} errores encontrados`)
         }
 
+        // Notificar cambio en el store para sincronizar con otras vistas
+        companyStore.notifyAccountsChanged()
+
         showImportModal.value = false
         importPreview.value = []
         uploadedFile.value = null
@@ -1206,9 +1212,10 @@ export default {
           changedAccounts.value.add(newAccountId)
         }
         
-        // Notificar cambio en el store
+        // Notificar cambio en el store para sincronizar con otras vistas
         companyStore.notifyAccountsChanged()
         
+        // Recargar cuentas para mostrar los cambios
         await loadAccounts()
         return true
       } catch (error) {

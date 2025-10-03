@@ -133,6 +133,7 @@ async def login(credentials: LoginRequest, request: Request):
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
+        token_type="bearer",
         user=UserResponse(
             id=str(user.id),
             username=user.username,
@@ -172,6 +173,7 @@ async def refresh_token(
         return TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
+            token_type="bearer",
             user=UserResponse(
                 id=str(current_user.id),
                 username=current_user.username,

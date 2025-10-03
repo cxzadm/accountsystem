@@ -1090,7 +1090,9 @@ async def get_accounts_balance(
         sums = await cursor.to_list(5000)
         client.close()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error consultando movimientos: {str(e)}")
+        # Fallback suave: si falla la agregación, continuar con saldos iniciales (sin movimientos)
+        print(f"⚠️ Error consultando movimientos (fallback a 0): {e}")
+        sums = []
 
     sums_by_account = {str(item.get("_id")): item for item in sums}
 
@@ -1115,6 +1117,11 @@ async def get_accounts_balance(
                     nature=account.nature,
                     parent_code=account.parent_code,
                     level=account.level,
+                    initial_debit_balance=account.initial_debit_balance,
+                    initial_credit_balance=account.initial_credit_balance,
+                    current_debit_balance=account.current_debit_balance,
+                    current_credit_balance=account.current_credit_balance,
+                    last_transaction_date=account.last_transaction_date,
                     company_id=account.company_id,
                     is_active=account.is_active,
                     is_editable=account.is_editable,

@@ -370,6 +370,7 @@ export default {
 
     // State
     const accounts = ref([])
+    const rangeBalances = ref({}) // Map accountId -> net_balance for date range
     const loading = ref(false)
     const currentPage = ref(1)
     const totalPages = ref(1)
@@ -450,6 +451,26 @@ export default {
         // Si hay menos de 1000 cuentas, no mostrar paginación
         if (response.data.length <= pageSize) {
           totalPages.value = 1
+        }
+
+        // Cargar balances por rango si hay fechas (excluir movimientos posteriores correctamente)
+        rangeBalances.value = {}
+        if (filters.start_date || filters.end_date) {
+          try {
+            const balParams = {}
+            if (filters.start_date) balParams.start_date = filters.start_date
+            if (filters.end_date) balParams.end_date = filters.end_date
+            const balRes = await api.get(`/accounts/${currentCompany.value.id}/balance`, { params: balParams })
+            const map = {}
+            for (const b of balRes.data || []) {
+              const acc = b.account || {}
+              // b.net_balance ya es saldo inicial + movimientos dentro del rango, según backend
+              if (acc.id) map[acc.id] = Number(b.net_balance || 0)
+            }
+            rangeBalances.value = map
+          } catch (e) {
+            console.error('Error loading range balances:', e)
+          }
         }
       } catch (error) {
         console.error('Error loading accounts:', error)
@@ -635,6 +656,10 @@ export default {
     }
 
     const getAccountBalance = (account) => {
+      // Si hay balances por rango, usar ese valor para respetar Fecha Inicio/Fin
+      if (rangeBalances.value && rangeBalances.value[account.id] !== undefined) {
+        return Number(rangeBalances.value[account.id])
+      }
       const initialDebit = Number(account.initial_debit_balance || 0)
       const initialCredit = Number(account.initial_credit_balance || 0)
       const initialNet = initialDebit - initialCredit
@@ -703,6 +728,7 @@ export default {
     // Watchers
     watch(() => companyStore.accountsChanged, () => {
       // Recargar cuentas cuando hay cambios desde otras vistas
+      console.log('🔄 Cambios detectados en cuentas, recargando Plan de Cuentas...')
       loadAccounts()
     })
 
@@ -720,6 +746,8 @@ export default {
       totalPages,
       visiblePages,
       filters,
+      currentCompany,
+      rangeBalances,
       showCreateAccountModal,
       editingAccount,
       

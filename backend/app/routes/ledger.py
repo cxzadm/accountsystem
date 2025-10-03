@@ -9,6 +9,265 @@ from datetime import datetime
 
 router = APIRouter()
 
+@router.get("/debug/", response_model=dict)
+async def debug_ledger_data(
+    company_id: str = Query(..., description="ID de la empresa"),
+    current_user: User = Depends(require_permission("reports:read"))
+):
+    """Endpoint de debug para verificar datos del ledger"""
+    
+    # Verificar que el usuario tenga acceso a esta empresa
+    if current_user.role != "admin" and company_id not in current_user.companies:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes acceso a esta empresa"
+        )
+    
+    try:
+        from app.models.account import Account
+        from app.models.journal import JournalEntry
+        from app.models.ledger import LedgerEntry
+        from motor.motor_asyncio import AsyncIOMotorClient
+        from app.config import settings
+        
+        # Obtener todas las cuentas
+        accounts = await Account.find(
+            Account.company_id == company_id,
+            Account.is_active == True
+        ).to_list()
+        
+        # Obtener todos los asientos
+        journal_entries = await JournalEntry.find(
+            JournalEntry.company_id == company_id
+        ).to_list()
+        
+        # Obtener todas las entradas del ledger
+        ledger_entries = await LedgerEntry.find(
+            LedgerEntry.company_id == company_id
+        ).to_list()
+        
+        # Obtener entradas del ledger usando MongoDB directo
+        client = AsyncIOMotorClient(settings.mongodb_url)
+        database = client[settings.database_name]
+        collection = database.ledger_entries
+        mongo_ledger_entries = await collection.find({"company_id": company_id}).to_list(1000)
+        client.close()
+        
+        return {
+            "accounts_count": len(accounts),
+            "accounts": [{"id": str(acc.id), "code": acc.code, "name": acc.name} for acc in accounts],
+            "journal_entries_count": len(journal_entries),
+            "journal_entries": [{"id": str(je.id), "entry_number": je.entry_number, "status": je.status, "lines_count": len(je.lines)} for je in journal_entries],
+            "ledger_entries_count": len(ledger_entries),
+            "mongo_ledger_entries_count": len(mongo_ledger_entries),
+            "mongo_ledger_entries": [{"account_id": entry.get("account_id"), "account_code": entry.get("account_code"), "debit": entry.get("debit_amount"), "credit": entry.get("credit_amount")} for entry in mongo_ledger_entries[:10]]
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en debug: {str(e)}")
+
+@router.post("/sync-journal-to-ledger/", response_model=dict)
+async def sync_journal_to_ledger(
+    company_id: str = Query(..., description="ID de la empresa"),
+    current_user: User = Depends(require_permission("reports:read"))
+):
+    """Sincronizar asientos aprobados con el ledger"""
+    
+    # Verificar que el usuario tenga acceso a esta empresa
+    if current_user.role != "admin" and company_id not in current_user.companies:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes acceso a esta empresa"
+        )
+    
+    try:
+        from app.models.journal import JournalEntry
+        from app.services.ledger_service import LedgerService
+        
+        # Obtener asientos aprobados que no han sido mayorizados
+        journal_entries = await JournalEntry.find(
+            JournalEntry.company_id == company_id,
+            JournalEntry.status == "posted"
+        ).to_list()
+        
+        posted_count = 0
+        errors = []
+        
+        for entry in journal_entries:
+            try:
+                # Verificar si ya tiene entradas del ledger
+                from app.models.ledger import LedgerEntry
+                existing_entries = await LedgerEntry.find(
+                    LedgerEntry.journal_entry_id == str(entry.id)
+                ).to_list()
+                
+                if not existing_entries:
+                    # Mayorizar el asiento
+                    success = await LedgerService.post_journal_entry(
+                        entry, 
+                        company_id, 
+                        str(current_user.id)
+                    )
+                    if success:
+                        posted_count += 1
+                    else:
+                        errors.append(f"Error mayorizando asiento {entry.entry_number}")
+                else:
+                    print(f"Asiento {entry.entry_number} ya mayorizado")
+                    
+            except Exception as e:
+                errors.append(f"Error procesando asiento {entry.entry_number}: {str(e)}")
+        
+        return {
+            "message": f"Sincronización completada: {posted_count} asientos mayorizados",
+            "posted_count": posted_count,
+            "total_entries": len(journal_entries),
+            "errors": errors
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en sincronización: {str(e)}")
+
+@router.get("/check-account/{account_code}/", response_model=dict)
+async def check_account_status(
+    account_code: str,
+    company_id: str = Query(..., description="ID de la empresa"),
+    current_user: User = Depends(require_permission("reports:read"))
+):
+    """Verificar el estado de una cuenta específica"""
+    
+    # Verificar que el usuario tenga acceso a esta empresa
+    if current_user.role != "admin" and company_id not in current_user.companies:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes acceso a esta empresa"
+        )
+    
+    try:
+        from app.models.account import Account
+        from app.models.journal import JournalEntry
+        from app.models.ledger import LedgerEntry
+        
+        # Buscar la cuenta
+        account = await Account.find_one(
+            Account.company_id == company_id,
+            Account.code == account_code
+        )
+        
+        if not account:
+            return {
+                "account_code": account_code,
+                "found": False,
+                "message": "Cuenta no encontrada"
+            }
+        
+        # Buscar entradas del ledger para esta cuenta
+        ledger_entries = await LedgerEntry.find(
+            LedgerEntry.company_id == company_id,
+            LedgerEntry.account_code == account_code
+        ).to_list()
+        
+        # Buscar asientos que contengan esta cuenta
+        journal_entries = await JournalEntry.find(
+            JournalEntry.company_id == company_id,
+            JournalEntry.status == "posted"
+        ).to_list()
+        
+        journal_lines = []
+        for je in journal_entries:
+            for line in je.lines:
+                if line.account_code == account_code:
+                    journal_lines.append({
+                        "entry_number": je.entry_number,
+                        "date": je.date,
+                        "description": line.description,
+                        "debit": line.debit,
+                        "credit": line.credit
+                    })
+        
+        return {
+            "account_code": account_code,
+            "account_name": account.name,
+            "found": True,
+            "account_id": str(account.id),
+            "is_active": account.is_active,
+            "initial_debit_balance": account.initial_debit_balance,
+            "initial_credit_balance": account.initial_credit_balance,
+            "current_debit_balance": account.current_debit_balance,
+            "current_credit_balance": account.current_credit_balance,
+            "ledger_entries_count": len(ledger_entries),
+            "journal_lines_count": len(journal_lines),
+            "journal_lines": journal_lines[:5],  # Mostrar solo las primeras 5
+            "ledger_entries": [{"date": le.date, "description": le.description, "debit": le.debit_amount, "credit": le.credit_amount} for le in ledger_entries[:5]]
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error verificando cuenta: {str(e)}")
+
+@router.get("/test-accounts/", response_model=dict)
+async def test_accounts_visibility(
+    company_id: str = Query(..., description="ID de la empresa"),
+    current_user: User = Depends(require_permission("reports:read"))
+):
+    """Probar la visibilidad de cuentas específicas en el mayor general"""
+    
+    # Verificar que el usuario tenga acceso a esta empresa
+    if current_user.role != "admin" and company_id not in current_user.companies:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes acceso a esta empresa"
+        )
+    
+    try:
+        from app.models.account import Account
+        from app.services.ledger_service import LedgerService
+        
+        # Obtener todas las cuentas
+        accounts = await Account.find(
+            Account.company_id == company_id,
+            Account.is_active == True
+        ).to_list()
+        
+        # Obtener el mayor general
+        ledger_data = await LedgerService.get_general_ledger(company_id)
+        
+        # Verificar cuentas específicas
+        target_codes = ["101010202", "101010203", "101010201", "101010301"]
+        results = {}
+        
+        for code in target_codes:
+            # Buscar en cuentas
+            account = next((acc for acc in accounts if acc.code == code), None)
+            
+            # Buscar en ledger
+            ledger_account = next((ledger for ledger in ledger_data if ledger.account_code == code), None)
+            
+            results[code] = {
+                "in_accounts": account is not None,
+                "in_ledger": ledger_account is not None,
+                "account_name": account.name if account else "No encontrada",
+                "account_active": account.is_active if account else None,
+                "initial_debit": account.initial_debit_balance if account else None,
+                "initial_credit": account.initial_credit_balance if account else None,
+                "current_debit": account.current_debit_balance if account else None,
+                "current_credit": account.current_credit_balance if account else None,
+                "ledger_net_balance": ledger_account.net_balance if ledger_account else None,
+                "ledger_total_debits": ledger_account.total_debits if ledger_account else None,
+                "ledger_total_credits": ledger_account.total_credits if ledger_account else None,
+                "ledger_entry_count": ledger_account.entry_count if ledger_account else None
+            }
+        
+        return {
+            "total_accounts": len(accounts),
+            "total_ledger_accounts": len(ledger_data),
+            "account_codes": [acc.code for acc in accounts],
+            "ledger_codes": [ledger.account_code for ledger in ledger_data],
+            "target_accounts": results
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en prueba: {str(e)}")
+
 @router.get("/", response_model=List[AccountLedgerSummary])
 async def get_general_ledger(
     company_id: str = Query(..., description="ID de la empresa"),

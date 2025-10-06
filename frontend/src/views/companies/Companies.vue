@@ -120,13 +120,44 @@
                     >
                       <i class="fas fa-edit"></i>
                     </button>
-                    <button
-                      class="btn btn-sm btn-outline-danger"
-                      @click="deleteCompany(company)"
-                      title="Eliminar"
-                    >
-                      <i class="fas fa-trash"></i>
-                    </button>
+                    <div class="btn-group" role="group">
+                      <button
+                        class="btn btn-sm btn-outline-warning dropdown-toggle"
+                        type="button"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                        title="Acciones de Estado"
+                      >
+                        <i class="fas fa-ellipsis-v"></i>
+                      </button>
+                      <ul class="dropdown-menu">
+                        <li v-if="company.status === 'active'">
+                          <button
+                            class="dropdown-item text-warning"
+                            @click="deactivateCompany(company)"
+                          >
+                            <i class="fas fa-pause me-2"></i>Inactivar
+                          </button>
+                        </li>
+                        <li v-if="company.status === 'inactive'">
+                          <button
+                            class="dropdown-item text-success"
+                            @click="activateCompany(company)"
+                          >
+                            <i class="fas fa-play me-2"></i>Activar
+                          </button>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                          <button
+                            class="dropdown-item text-danger"
+                            @click="forceDeleteCompany(company)"
+                          >
+                            <i class="fas fa-trash-alt me-2"></i>Eliminar Completamente
+                          </button>
+                        </li>
+                      </ul>
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -170,6 +201,8 @@ import { useRouter } from 'vue-router'
 import { useToast } from 'vue-toastification'
 import api from '@/services/api'
 import { debounce } from 'lodash-es'
+import { alerts } from '@/services/alerts'
+import Swal from 'sweetalert2'
 
 export default {
   name: 'Companies',
@@ -251,15 +284,119 @@ export default {
       router.push(`/companies/${company.id}/settings`)
     }
 
-    const deleteCompany = async (company) => {
-      if (confirm(`¿Estás seguro de eliminar la empresa ${company.name}?`)) {
+    const deactivateCompany = async (company) => {
+      const confirmed = await alerts.confirm({
+        title: 'Inactivar Empresa',
+        text: `¿Estás seguro de inactivar la empresa "${company.name}"?`,
+        confirmButtonText: 'Sí, Inactivar',
+        cancelButtonText: 'Cancelar',
+        icon: 'warning'
+      })
+      
+      if (confirmed) {
         try {
-          await api.delete(`/companies/${company.id}`)
-          toast.success('Empresa eliminada exitosamente')
+          const response = await api.delete(`/companies/${company.id}?force_delete=false`)
+          toast.success(response.data.message)
           loadCompanies()
         } catch (error) {
-          console.error('Error deleting company:', error)
-          toast.error('Error al eliminar empresa')
+          console.error('Error deactivating company:', error)
+          toast.error('Error al inactivar empresa')
+        }
+      }
+    }
+
+    const activateCompany = async (company) => {
+      const confirmed = await alerts.confirm({
+        title: 'Activar Empresa',
+        text: `¿Estás seguro de activar la empresa "${company.name}"?`,
+        confirmButtonText: 'Sí, Activar',
+        cancelButtonText: 'Cancelar',
+        icon: 'success'
+      })
+      
+      if (confirmed) {
+        try {
+          // Actualizar el status a active
+          const response = await api.put(`/companies/${company.id}`, {
+            status: 'active'
+          })
+          toast.success('Empresa activada exitosamente')
+          loadCompanies()
+        } catch (error) {
+          console.error('Error activating company:', error)
+          toast.error('Error al activar empresa')
+        }
+      }
+    }
+
+    const forceDeleteCompany = async (company) => {
+      const confirmed = await alerts.confirm({
+        title: '⚠️ ELIMINACIÓN COMPLETA ⚠️',
+        text: `¿Estás completamente seguro de eliminar "${company.name}"?
+
+Esto borrará:
+• La empresa completamente
+• Todas las cuentas contables
+• Todos los asientos contables
+• Todas las entradas del mayor
+• Tipos de documentos
+• Reservas de números
+• Logs de auditoría relacionados
+
+Esta acción NO SE PUEDE DESHACER.`,
+        confirmButtonText: 'Sí, Eliminar Completamente',
+        cancelButtonText: 'Cancelar',
+        icon: 'error'
+      })
+      
+      if (confirmed) {
+        // Segunda confirmación con input
+        const doubleConfirm = await Swal.fire({
+          title: 'FINAL CONFIRMACIÓN',
+          text: `Escriba "ELIMINAR" para confirmar la eliminación de "${company.name}":`,
+          input: 'text',
+          inputPlaceholder: 'Escriba ELIMINAR aquí',
+          showCancelButton: true,
+          confirmButtonText: 'Confirmar Eliminación',
+          cancelButtonText: 'Cancelar',
+          icon: 'warning',
+          inputValidator: (value) => {
+            if (value !== 'ELIMINAR') {
+              return 'Debe escribir exactamente "ELIMINAR"'
+            }
+          }
+        })
+        
+        if (doubleConfirm.isConfirmed) {
+          try {
+            const response = await api.delete(`/companies/${company.id}?force_delete=true`)
+            toast.success(response.data.message)
+            
+            // Mostrar detalles de lo que se removió
+            if (response.data.deleted_data) {
+              const deleted = response.data.deleted_data
+              console.log('📊 Datos eliminados:', deleted)
+              
+              let summary = []
+              if (deleted.accounts) summary.push(`${deleted.accounts} cuentas`)
+              if (deleted.journal_entries) summary.push(`${deleted.journal_entries} asientos`)
+              if (deleted.ledger_entries) summary.push(`${deleted.ledger_entries} entradas del mayor`)
+              if (deleted.document_types) summary.push(`${deleted.document_types} tipos de documento`)
+              if (deleted.users_updated) summary.push(`${deleted.users_updated} usuarios actualizados`)
+              
+              if (summary.length > 0) {
+                await alerts.info(
+                  'Datos Eliminados',
+                  `También se eliminaron: ${summary.join(', ')}`
+                )
+              }
+            }
+            
+            loadCompanies()
+          } catch (error) {
+            console.error('Error force deleting company:', error)
+            toast.error('Error al eliminar empresa completamente')
+          }
         }
       }
     }
@@ -299,7 +436,9 @@ export default {
       clearFilters,
       editCompany,
       openSettings,
-      deleteCompany,
+      deactivateCompany,
+      activateCompany,
+      forceDeleteCompany,
       getStatusColor,
       formatDate
     }
@@ -308,6 +447,24 @@ export default {
 </script>
 
 <style scoped>
+.companies-page .table-responsive {
+  overflow: visible; /* permitir que el dropdown flote sobre la tabla */
+}
+
+.companies-page .card,
+.companies-page .card-body,
+.companies-page .table {
+  overflow: visible; /* evitar recortes por contenedores padres */
+}
+
+.companies-page .btn-group {
+  position: relative; /* contexto para posicionamiento del dropdown */
+}
+
+.companies-page .dropdown-menu {
+  z-index: 3000; /* asegurar que quede por encima de la tabla y sombras */
+}
+
 .table th {
   border-top: none;
   font-weight: 600;
@@ -320,6 +477,39 @@ export default {
 
 .btn-group .btn:last-child {
   margin-right: 0;
+}
+
+.btn-group .dropdown-menu {
+  min-width: 200px;
+}
+
+.dropdown-item {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+}
+
+.dropdown-item i {
+  width: 16px;
+  text-align: center;
+}
+
+.dropdown-item:hover {
+  background-color: var(--bs-gray-100);
+}
+
+.dropdown-item.text-danger:hover {
+  background-color: var(--bs-danger);
+  color: white !important;
+}
+
+.dropdown-item.text-warning:hover {
+  background-color: var(--bs-warning);
+  color: white !important;
+}
+
+.dropdown-item.text-success:hover {
+  background-color: var(--bs-success);
+  color: white !important;
 }
 </style>
 

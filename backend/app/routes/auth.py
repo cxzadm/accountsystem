@@ -3,6 +3,7 @@ from fastapi.security import HTTPBearer
 from datetime import datetime, timedelta
 from typing import List
 from app.models.user import User, UserCreate, LoginRequest, TokenResponse, UserResponse
+from pydantic import BaseModel
 from app.auth.jwt_handler import (
     verify_password, 
     get_password_hash, 
@@ -16,6 +17,10 @@ from app.config import settings
 
 router = APIRouter()
 security = HTTPBearer()
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
 
 @router.post("/register", response_model=UserResponse)
 async def register(
@@ -231,8 +236,66 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
         updated_at=current_user.updated_at
     )
 
-
-
+@router.post("/change-password")
+async def change_password(
+    passwordData: ChangePasswordRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """Cambiar contraseña del usuario actual"""
+    try:
+        # Validar datos de entrada
+        if not passwordData.current_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La contraseña actual es requerida"
+            )
+        
+        if not passwordData.new_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La nueva contraseña es requerida"
+            )
+        
+        if len(passwordData.new_password) < 6:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La nueva contraseña debe tener al menos 6 caracteres"
+            )
+        
+        # Verificar contraseña actual
+        if not verify_password(passwordData.current_password, current_user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La contraseña actual es incorrecta"
+            )
+        
+        # Actualizar contraseña
+        new_password_hash = get_password_hash(passwordData.new_password)
+        current_user.password_hash = new_password_hash
+        current_user.updated_at = datetime.now()
+        await current_user.save()
+        
+        # Log de auditoría
+        await log_audit(
+            user=current_user,
+            action=AuditAction.UPDATE,
+            module=AuditModule.AUTH,
+            description="Contraseña cambiada exitosamente",
+            ip_address=request.client.host,
+            user_agent=request.headers.get("user-agent", "Unknown")
+        )
+        
+        return {"message": "Contraseña cambiada exitosamente"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error changing password: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno del servidor"
+        )
 
 
 

@@ -1,8 +1,9 @@
 from beanie import Document
-from pydantic import BaseModel
-from typing import List, Optional
+from pydantic import BaseModel, Field, model_validator
+from typing import List, Optional, Any
 from datetime import datetime
 from enum import Enum
+from bson import ObjectId
 
 class CompanyStatus(str, Enum):
     ACTIVE = "active"
@@ -21,7 +22,16 @@ class Company(Document):
     currency: str = "USD"
     created_at: datetime = datetime.now()
     updated_at: datetime = datetime.now()
-    created_by: str
+    created_by: str = Field(..., description="ID del usuario que creó la empresa")
+    
+    @model_validator(mode='before')
+    @classmethod
+    def validate_before(cls, values: Any) -> Any:
+        """Convierte ObjectId a string antes de la validación"""
+        if isinstance(values, dict) and 'created_by' in values:
+            if isinstance(values['created_by'], ObjectId):
+                values['created_by'] = str(values['created_by'])
+        return values
     
     class Settings:
         name = "companies"

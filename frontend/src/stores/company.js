@@ -40,10 +40,16 @@ export const useCompanyStore = defineStore('company', () => {
   const getCompany = async (id) => {
     loading.value = true
     try {
+      console.log('Fetching company with ID:', id)
+      console.log('Auth token exists:', !!localStorage.getItem('token'))
+      console.log('Auth token:', localStorage.getItem('token')?.substring(0, 20) + '...')
       const response = await api.get(`/companies/${id}`)
+      console.log('Company response:', response.data)
       return response.data
     } catch (error) {
       console.error('Error fetching company:', error)
+      console.error('Error status:', error.response?.status)
+      console.error('Error data:', error.response?.data)
       throw error
     } finally {
       loading.value = false

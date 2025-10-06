@@ -43,7 +43,11 @@ async def update_reservation(
     data: ReservationUpdate,
     current_user: User = Depends(require_permission("companies:update"))
 ):
-    res = await DocumentNumberReservation.get(reservation_id)
+    from bson import ObjectId
+    try:
+        res = await DocumentNumberReservation.find_one(DocumentNumberReservation.id == ObjectId(reservation_id))
+    except Exception:
+        res = None
     if not res:
         raise HTTPException(status_code=404, detail="Reserva no encontrada")
 

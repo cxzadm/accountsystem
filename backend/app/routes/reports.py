@@ -332,15 +332,17 @@ async def get_audit_logs(
     limit: int = Query(100, ge=1, le=1000),
     current_user: User = Depends(require_permission("audit:read"))
 ):
-    """Obtener logs de auditoría"""
-    # Solo admin puede ver logs de auditoría
+    """Obtener logs de auditoría.
+
+    - Admin: puede consultar sin company_id o con cualquiera.
+    - No admin: debe proveer company_id y pertenecer a sus empresas.
+    """
     if current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo administradores pueden ver logs de auditoría"
-        )
-    
-    from app.models.audit import AuditLog
+        if not company_id or company_id not in current_user.companies:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes acceso a esta auditoría"
+            )
     
     # Construir query
     query = {}
@@ -368,26 +370,138 @@ async def get_audit_logs(
     if module:
         query["module"] = module
     
-    # Obtener logs
-    logs = await AuditLog.find(query).skip(skip).limit(limit).to_list()
-    
-    return {
-        "logs": [
-            {
-                "id": str(log.id),
-                "user_id": log.user_id,
-                "username": log.username,
-                "action": log.action.value,
-                "module": log.module.value,
-                "description": log.description,
-                "timestamp": log.timestamp,
-                "ip_address": log.ip_address,
-                "company_id": log.company_id
-            }
-            for log in logs
-        ],
-        "total": len(logs)
-    }
+    # Obtener logs usando Motor para tolerar documentos antiguos (ObjectId en user_id/company_id)
+    try:
+        from motor.motor_asyncio import AsyncIOMotorClient
+        from app.config import settings
+        client = AsyncIOMotorClient(settings.mongodb_url)
+        db = client[settings.database_name]
+        collection = db["audit_logs"]
+
+        cursor = (
+            collection
+            .find(query)
+            .sort("timestamp", -1)
+            .skip(int(skip))
+            .limit(int(limit))
+        )
+        raw_logs = await cursor.to_list(length=limit)
+        client.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error consultando auditoría: {str(e)}")
+
+    def _to_str(value):
+        try:
+            return str(value) if value is not None else None
+        except Exception:
+            return None
+
+    mapped = []
+    for doc in raw_logs:
+        mapped.append({
+            "id": _to_str(doc.get("_id")),
+            "user_id": _to_str(doc.get("user_id")),
+            "username": doc.get("username"),
+            "action": getattr(doc.get("action"), "value", doc.get("action")),
+            "module": getattr(doc.get("module"), "value", doc.get("module")),
+            "description": doc.get("description"),
+            "timestamp": doc.get("timestamp"),
+            "ip_address": doc.get("ip_address"),
+            "company_id": _to_str(doc.get("company_id")),
+        })
+
+    return {"logs": mapped, "total": len(mapped)}
+
+@router.delete("/auditoria/{log_id}")
+async def delete_audit_log(
+    log_id: str,
+    current_user: User = Depends(require_permission("audit:read"))
+):
+    """Eliminar un log de auditoría por ID (solo admin)."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo administradores pueden eliminar auditoría")
+
+    try:
+        from motor.motor_asyncio import AsyncIOMotorClient
+        from app.config import settings
+        from bson import ObjectId
+        client = AsyncIOMotorClient(settings.mongodb_url)
+        db = client[settings.database_name]
+        collection = db["audit_logs"]
+
+        oid = None
+        try:
+            oid = ObjectId(log_id)
+        except Exception:
+            oid = None
+
+        query = {"_id": oid or log_id}
+        result = await collection.delete_one(query)
+        client.close()
+        if getattr(result, "deleted_count", 0) == 0 and oid is not None:
+            # Intentar por string si ObjectId no coincidió
+            client = AsyncIOMotorClient(settings.mongodb_url)
+            db = client[settings.database_name]
+            collection = db["audit_logs"]
+            result = await collection.delete_one({"_id": log_id})
+            client.close()
+
+        return {"deleted": getattr(result, "deleted_count", 0)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error eliminando log: {str(e)}")
+
+@router.delete("/auditoria")
+async def bulk_delete_audit_logs(
+    company_id: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    user_id: Optional[str] = Query(None),
+    action: Optional[str] = Query(None),
+    module: Optional[str] = Query(None),
+    current_user: User = Depends(require_permission("audit:read"))
+):
+    """Eliminar múltiples logs de auditoría por filtros (solo admin)."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo administradores pueden eliminar auditoría")
+
+    try:
+        from motor.motor_asyncio import AsyncIOMotorClient
+        from app.config import settings
+        from bson import ObjectId
+        client = AsyncIOMotorClient(settings.mongodb_url)
+        db = client[settings.database_name]
+        collection = db["audit_logs"]
+
+        query: Dict[str, Any] = {}
+        # helper to match either string or ObjectId
+        def str_or_oid(field: str, value: Optional[str]):
+            if not value:
+                return
+            try:
+                oid = ObjectId(value)
+                query[field] = {"$in": [value, oid]}
+            except Exception:
+                query[field] = value
+
+        str_or_oid("company_id", company_id)
+        str_or_oid("user_id", user_id)
+        if action:
+            query["action"] = action
+        if module:
+            query["module"] = module
+        if start_date or end_date:
+            ts: Dict[str, Any] = {}
+            if start_date:
+                ts["$gte"] = datetime.fromisoformat(start_date)
+            if end_date:
+                ts["$lte"] = datetime.fromisoformat(end_date)
+            query["timestamp"] = ts
+
+        result = await collection.delete_many(query or {})
+        client.close()
+        return {"deleted": getattr(result, "deleted_count", 0)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en eliminación masiva: {str(e)}")
 
 @router.post("/export/{report_type}")
 async def export_report(

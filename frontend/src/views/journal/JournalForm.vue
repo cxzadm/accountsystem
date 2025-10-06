@@ -192,11 +192,35 @@
                                 {{ getAccountDisplayText(account) }}
                               </option>
                             </optgroup>
-                          </select>
-                          <small class="text-muted" v-if="line.account_code && getSelectedAccountType(line.account_code) === 'P'">
+                      </select>
+                      <small class="text-muted" v-if="line.account_code && getSelectedAccountType(line.account_code) === 'P'">
                             <i class="fas fa-info-circle me-1"></i>
                             Cuenta padre seleccionada
                           </small>
+                      <!-- Quick account preview -->
+                      <div v-if="line.account_code && getPreview(index).loaded" class="mt-2 p-2 bg-light rounded border">
+                        <div class="d-flex justify-content-between align-items-center">
+                          <div class="small">
+                            <strong>Saldo (D - C):</strong>
+                            <span :class="getPreview(index).net >= 0 ? 'text-danger fw-bold' : 'text-success fw-bold'">
+                              {{ formatCurrency(getPreview(index).net) }}
+                            </span>
+                            <span class="text-muted ms-2">(Ini {{ formatCurrency(getPreview(index).initial_net) }})</span>
+                          </div>
+                          <router-link class="btn btn-xs btn-outline-primary" :to="{ name: 'Ledger', query: { account: line.account_code } }">Ver en Mayor</router-link>
+                        </div>
+                        <div v-if="getPreview(index).entries && getPreview(index).entries.length" class="mt-2">
+                          <div class="text-muted small mb-1">Últimos movimientos:</div>
+                          <ul class="list-unstyled mb-0 small">
+                            <li v-for="e in (getPreview(index).entries || []).slice(0,3)" :key="e.id || e.date">
+                              <span class="text-muted">{{ new Date(e.date).toLocaleDateString() }}:</span>
+                              {{ e.description || '-' }}
+                              <span class="ms-2 text-danger" v-if="Number(e.debit_amount||0) > 0">D {{ formatCurrency(Number(e.debit_amount||0)) }}</span>
+                              <span class="ms-2 text-success" v-if="Number(e.credit_amount||0) > 0">C {{ formatCurrency(Number(e.credit_amount||0)) }}</span>
+                            </li>
+                          </ul>
+                        </div>
+                      </div>
                         </td>
                         <td>
                           <input
@@ -467,6 +491,11 @@ export default {
     })
 
     const errors = reactive({})
+    const previews = ref([])
+    const getPreview = (idx) => {
+      const p = previews.value && previews.value[idx]
+      return p || { loaded: false, initial_net: 0, net: 0, entries: [] }
+    }
 
     // Computed
     const isEdit = computed(() => !!route.params.id)
@@ -504,6 +533,43 @@ export default {
         console.error('Error loading accounts:', error)
         toast.error('Error al cargar cuentas')
       }
+    }
+
+    const fetchPreviewForLine = async (idx) => {
+      const line = form.lines[idx]
+      if (!line?.account_code || !currentCompany.value) return
+      try {
+        // Calcular saldos usando la cuenta cargada (coincide con InitialBalances.vue)
+        const account = accounts.value.find(a => a.code === line.account_code)
+        const initialNet = Number((account?.initial_debit_balance || 0)) - Number((account?.initial_credit_balance || 0))
+        const movNet = Number((account?.current_debit_balance || 0)) - Number((account?.current_credit_balance || 0))
+
+        const params = { company_id: currentCompany.value.id }
+        let entries = []
+        try {
+          const accId = getAccountIdByCode(line.account_code)
+          if (accId) {
+            const entriesResp = await api.get(`/ledger/account/${encodeURIComponent(accId)}/entries/`, { params })
+            entries = entriesResp.data?.entries || []
+          }
+        } catch (e) {
+          entries = []
+        }
+        previews.value[idx] = {
+          loaded: true,
+          initial_net: initialNet,
+          net: initialNet + movNet,
+          entries
+        }
+      } catch (e) {
+        // Fallback: minimal preview
+        previews.value[idx] = { loaded: true, initial_net: 0, net: 0, entries: [] }
+      }
+    }
+
+    const getAccountIdByCode = (code) => {
+      const acc = accounts.value.find(a => a.code === code)
+      return acc ? acc.id : ''
     }
 
     // Computed para organizar cuentas por tipo con jerarquía
@@ -577,6 +643,15 @@ export default {
       }
     }
 
+    const updateAccountName = (index) => {
+      const line = form.lines[index]
+      const account = accounts.value.find(acc => acc.code === line.account_code)
+      line.account_name = account ? account.name : ''
+      line.description = account ? account.name : ''
+      // trigger preview when account changes
+      fetchPreviewForLine(index)
+    }
+
     const reserveNumber = async () => {
       if (!form.document_type_id) return
       reserving.value = true
@@ -648,17 +723,7 @@ export default {
       }
     }
 
-    const updateAccountName = (index) => {
-      const account = accounts.value.find(acc => acc.code === form.lines[index].account_code)
-      if (account) {
-        form.lines[index].account_name = account.name
-        // Actualizar la descripción con el nombre de la cuenta
-        form.lines[index].description = account.name
-      } else {
-        form.lines[index].account_name = ''
-        form.lines[index].description = ''
-      }
-    }
+    
 
     const calculateTotals = () => {
       // This is handled by computed properties
@@ -811,6 +876,7 @@ export default {
       accountTypes,
       documentTypes,
       reserving,
+      getPreview,
       onChangeDocumentType,
       reserveNumber,
       totalDebit,

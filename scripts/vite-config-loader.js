@@ -5,13 +5,13 @@
 // Configuración hardcodeada para evitar problemas de compatibilidad
 const BACKEND_CONFIG = {
   IP: '172.16.0.2',
-  PORT: '8006',
+  PORT: '8008',
   PROTOCOL: 'http',
   HOST: '0.0.0.0'
 };
 
 const FRONTEND_CONFIG = {
-  PORT: 5176,
+  PORT: 5178,
   HOST: '0.0.0.0',
   ALLOWED_HOSTS: ["accescontserver.sytes.net","localhost","127.0.0.1","172.16.0.2"]
 };

@@ -89,7 +89,13 @@
                 <th>Descripción</th>
                 <th>IP</th>
                 <th>Fecha</th>
-                <th>Acciones</th>
+                <th>
+                  <div class="d-flex justify-content-end">
+                    <button class="btn btn-sm btn-outline-danger" @click="bulkDelete" :disabled="loading || auditLogs.length===0" title="Eliminar filtrados">
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -143,14 +149,23 @@
                     </div>
                   </div>
                 </td>
-                <td>
-                  <button
-                    class="btn btn-sm btn-outline-primary"
-                    @click="viewDetails(log)"
-                    title="Ver Detalles"
-                  >
-                    <i class="fas fa-eye"></i>
-                  </button>
+                <td class="text-end">
+                  <div class="btn-group">
+                    <button
+                      class="btn btn-sm btn-outline-primary"
+                      @click="viewDetails(log)"
+                      title="Ver Detalles"
+                    >
+                      <i class="fas fa-eye"></i>
+                    </button>
+                    <button
+                      class="btn btn-sm btn-outline-danger"
+                      @click="deleteOne(log)"
+                      title="Eliminar registro"
+                    >
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -240,6 +255,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useToast } from 'vue-toastification'
 import api from '@/services/api'
+import { alerts } from '@/services/alerts'
 
 export default {
   name: 'Audit',
@@ -293,6 +309,45 @@ export default {
         toast.error('Error al cargar logs de auditoría')
       } finally {
         loading.value = false
+      }
+    }
+
+    const deleteOne = async (log) => {
+      if (!log?.id) return
+      const confirmed = await alerts.confirm({
+        title: 'Eliminar registro de auditoría',
+        text: 'Esta acción no se puede deshacer',
+        icon: 'warning',
+        confirmButtonText: 'Eliminar'
+      })
+      if (!confirmed) return
+      try {
+        await api.delete(`/reports/auditoria/${log.id}`)
+        auditLogs.value = auditLogs.value.filter(l => l.id !== log.id)
+        await alerts.success('Eliminado', 'Registro eliminado correctamente')
+      } catch (e) {
+        console.error('Error deleting audit log:', e)
+        await alerts.error('Error', 'No se pudo eliminar el registro')
+      }
+    }
+
+    const bulkDelete = async () => {
+      const confirmed = await alerts.confirm({
+        title: 'Eliminar registros filtrados',
+        text: 'Se eliminarán todos los registros que coincidan con los filtros actuales',
+        icon: 'warning',
+        confirmButtonText: 'Eliminar'
+      })
+      if (!confirmed) return
+      try {
+        const params = { ...filters }
+        const { data } = await api.delete('/reports/auditoria', { params })
+        await alerts.success('Eliminación completa', `Eliminados ${data.deleted} registros`)
+        currentPage.value = 1
+        await loadAuditLogs()
+      } catch (e) {
+        console.error('Error bulk deleting audit logs:', e)
+        await alerts.error('Error', 'No se pudo eliminar en bloque')
       }
     }
 
@@ -403,6 +458,8 @@ export default {
       changePage,
       clearFilters,
       viewDetails,
+      deleteOne,
+      bulkDelete,
       getActionColor,
       getModuleColor,
       formatDate,

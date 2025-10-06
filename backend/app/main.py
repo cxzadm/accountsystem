@@ -4,6 +4,16 @@ from contextlib import asynccontextmanager
 from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
 import uvicorn
+import sys
+import os
+from pathlib import Path
+
+# Agregar el directorio raíz del proyecto al path para acceder a scripts
+project_root = Path(__file__).parent.parent.parent
+sys.path.append(str(project_root))
+
+# Importar configuración centralizada
+from scripts.config_loader import load_config, get_frontend_config, get_backend_config
 
 from app.config import settings
 from app.models.user import User
@@ -52,22 +62,71 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS (permitir todos los orígenes en desarrollo; usamos Bearer tokens, no cookies)
-# CORS
-# En desarrollo: permitir Vite dev server y mismo host explícitamente (mitiga proxies intermedios que quitan headers)
-allowed_origins = [
-    "*",
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://localhost:5175",
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:5174",
-    "http://127.0.0.1:5175",
-]
+# CORS - Configuración centralizada desde config.json
+def get_cors_origins():
+    """Obtener orígenes permitidos desde la configuración centralizada"""
+    try:
+        frontend_config = get_frontend_config()
+        backend_config = get_backend_config()
+        
+        origins = ["*"]  # Permitir todos en desarrollo
+        
+        # Agregar localhost con puertos comunes
+        for i in range(5173, 5180):  # Puertos comunes de desarrollo
+            origins.extend([
+                f"http://localhost:{i}",
+                f"http://127.0.0.1:{i}"
+            ])
+        
+        # Agregar rangos de IP comunes para desarrollo
+        common_ips = ['192.168.68.113', '192.168.1.100', '192.168.0.100', '10.0.0.100']
+        for ip in common_ips:
+            for i in range(5173, 5180):
+                origins.append(f"http://{ip}:{i}")
+        
+        # Agregar hosts permitidos desde la configuración
+        if 'allowedHosts' in frontend_config:
+            for host in frontend_config['allowedHosts']:
+                # Agregar con diferentes puertos para desarrollo
+                for port in [frontend_config['port'], 5173, 5174, 5175, 5176]:
+                    origins.append(f"http://{host}:{port}")
+                
+                # También agregar el host sin puerto
+                origins.append(f"http://{host}")
+        
+        # Agregar la IP del backend con diferentes puertos
+        if 'ip' in backend_config:
+            backend_ip = backend_config['ip']
+            for port in [frontend_config['port'], 5173, 5174, 5175, 5176]:
+                origins.append(f"http://{backend_ip}:{port}")
+        
+        return list(set(origins))  # Remover duplicados
+        
+    except Exception as e:
+        print(f"⚠️ Error cargando configuración CORS: {e}")
+        # Fallback a configuración por defecto
+        return [
+            "*",
+            "http://localhost:5173",
+            "http://localhost:5174",
+            "http://localhost:5175",
+            "http://localhost:5176",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:5174",
+            "http://127.0.0.1:5175",
+            "http://127.0.0.1:5176"
+        ]
 
+allowed_origins = get_cors_origins()
+print(f"🌐 CORS Origins configurados: {len(allowed_origins)} orígenes")
+print(f"   📋 Primeros orígenes: {allowed_origins[:5]}...")
+
+# CORS permisivo para entornos de desarrollo y configuraciones dinámicas de puertos/IP
+# Mantiene la lista calculada de orígenes y además permite cualquier origen vía regex.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=r"https?://.*",
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

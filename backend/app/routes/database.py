@@ -4,6 +4,7 @@ from typing import List, Optional
 from app.models.user import User
 from app.auth.dependencies import get_current_user, require_permission, log_audit, AuditAction, AuditModule
 from motor.motor_asyncio import AsyncIOMotorClient
+from bson import ObjectId
 from app.config import settings
 import json
 import csv
@@ -15,6 +16,104 @@ from datetime import datetime
 import asyncio
 
 router = APIRouter()
+
+def process_document_for_import(doc):
+    """
+    Procesa un documento para importación, validando y convirtiendo ObjectIds correctamente
+    """
+    try:
+        processed_doc = doc.copy()
+        
+        # Procesar el campo _id si existe
+        if '_id' in processed_doc:
+            _id = processed_doc['_id']
+            
+            # Si es un string, intentar convertirlo a ObjectId
+            if isinstance(_id, str):
+                try:
+                    processed_doc['_id'] = ObjectId(_id)
+                except Exception as e:
+                    print(f"   ⚠️  Error convirtiendo _id '{_id}' a ObjectId: {e}")
+                    # Si no se puede convertir, usar el string como está
+                    pass
+            # Si ya es un ObjectId, mantenerlo
+            elif isinstance(_id, ObjectId):
+                pass
+            # Si es un dict (ObjectId serializado), intentar reconstruirlo
+            elif isinstance(_id, dict) and '$oid' in _id:
+                try:
+                    processed_doc['_id'] = ObjectId(_id['$oid'])
+                except Exception as e:
+                    print(f"   ⚠️  Error reconstruyendo ObjectId desde dict: {e}")
+                    return None
+        
+        # Procesar otros campos que puedan contener ObjectIds
+        for key, value in processed_doc.items():
+            if key != '_id' and isinstance(value, str) and len(value) == 24:
+                # Verificar si parece un ObjectId (24 caracteres hexadecimales)
+                try:
+                    if all(c in '0123456789abcdefABCDEF' for c in value):
+                        processed_doc[key] = ObjectId(value)
+                except:
+                    pass  # Si no es un ObjectId válido, mantener como string
+        
+        return processed_doc
+        
+    except Exception as e:
+        print(f"   ❌ Error procesando documento: {e}")
+        return None
+
+async def get_unique_query_for_collection(collection_name, doc):
+    """
+    Obtiene una consulta única para verificar duplicados según el tipo de colección
+    """
+    try:
+        # Definir campos únicos por colección
+        unique_fields = {
+            'users': ['username', 'email'],
+            'companies': ['ruc', 'name'],
+            'accounts': ['account_code', 'company'],
+            'journal_entries': ['entry_number', 'company'],
+            'document_types': ['abbreviation', 'company'],
+        }
+        
+        fields_to_check = unique_fields.get(collection_name, ['name', 'code'])
+        
+        # Construir consulta con campos únicos disponibles en el documento
+        query = {}
+        for field in fields_to_check:
+            if field in doc:
+                query[field] = doc[field]
+                break  # Usar el primer campo único encontrado
+        
+        return query
+        
+    except Exception as e:
+        print(f"   ⚠️  Error construyendo consulta única: {e}")
+        return {}
+
+async def verify_import_integrity(db, collection_name, expected_count):
+    """
+    Verifica la integridad de los datos después de la importación
+    """
+    try:
+        collection = db[collection_name]
+        actual_count = await collection.count_documents({})
+        
+        print(f"   🔍 Verificación de integridad para {collection_name}:")
+        print(f"   📊 Documentos esperados: {expected_count}")
+        print(f"   📊 Documentos encontrados: {actual_count}")
+        
+        if actual_count == expected_count:
+            print(f"   ✅ Integridad verificada correctamente")
+            return True
+        else:
+            print(f"   ⚠️  Advertencia: conteo de documentos no coincide")
+            return False
+            
+    except Exception as e:
+        print(f"   ❌ Error verificando integridad: {e}")
+        return False
 
 @router.get("/test")
 async def test_database_endpoint(current_user: User = Depends(get_current_user)):
@@ -307,7 +406,14 @@ async def import_database(
                             print(f"⚠️  Saltando {collection_name}: no es una lista")
                             continue
                         
-                        print(f"📥 Procesando colección: {collection_name} ({len(documents)} documentos)")
+                        # Mostrar estadísticas antes de la importación
+                        collection = db[collection_name]
+                        existing_count = await collection.count_documents({})
+                        
+                        print(f"📥 Procesando colección: {collection_name}")
+                        print(f"   📊 Documentos existentes: {existing_count}")
+                        print(f"   📥 Documentos a importar: {len(documents)}")
+                        print(f"   🎯 Modo: {mode.upper()}")
                         
                         # Obtener colección
                         collection = db[collection_name]
@@ -320,57 +426,117 @@ async def import_database(
                                 if result.deleted_count > 0:
                                     print(f"   🗑️  Eliminados {result.deleted_count} documentos existentes")
                                 
-                                # Insertar todos los documentos nuevos
-                                await collection.insert_many(documents)
-                                imported_count += len(documents)
-                                print(f"   ✅ Reemplazados {len(documents)} documentos")
+                                # Validar y procesar ObjectIds antes de insertar
+                                processed_documents = []
+                                for doc in documents:
+                                    processed_doc = process_document_for_import(doc)
+                                    if processed_doc:
+                                        processed_documents.append(processed_doc)
+                                
+                                if processed_documents:
+                                    await collection.insert_many(processed_documents)
+                                    imported_count += len(processed_documents)
+                                    print(f"   ✅ Reemplazados {len(processed_documents)} documentos")
+                                    
+                                    # Verificar integridad después de la importación
+                                    await verify_import_integrity(db, collection_name, len(processed_documents))
+                                else:
+                                    print(f"   ⚠️  No se procesaron documentos válidos")
                                 
                             elif mode == "upsert":
                                 # Modo UPSERT: actualizar si existe, insertar si no
                                 print(f"   🔄 Modo UPSERT: actualizando/insertando...")
                                 upserted_count = 0
                                 for doc in documents:
-                                    if '_id' in doc:
+                                    processed_doc = process_document_for_import(doc)
+                                    if not processed_doc:
+                                        print(f"   ⚠️  Saltando documento inválido")
+                                        continue
+                                    
+                                    if '_id' in processed_doc:
                                         # Usar _id como criterio de búsqueda
                                         result = await collection.replace_one(
-                                            {"_id": doc['_id']}, 
-                                            doc, 
+                                            {"_id": processed_doc['_id']}, 
+                                            processed_doc, 
                                             upsert=True
                                         )
                                         if result.upserted_id:
-                                            print(f"   ➕ Insertado documento con _id: {doc['_id']}")
+                                            print(f"   ➕ Insertado documento con _id: {processed_doc['_id']}")
                                         else:
-                                            print(f"   🔄 Actualizado documento con _id: {doc['_id']}")
+                                            print(f"   🔄 Actualizado documento con _id: {processed_doc['_id']}")
                                     else:
                                         # Sin _id, insertar directamente
-                                        await collection.insert_one(doc)
+                                        await collection.insert_one(processed_doc)
                                         print(f"   ➕ Insertado documento sin _id")
                                     upserted_count += 1
                                 
                                 imported_count += upserted_count
                                 print(f"   ✅ Procesados {upserted_count} documentos (upsert)")
                                 
+                                # Verificar integridad después de la importación
+                                await verify_import_integrity(db, collection_name, upserted_count)
+                                
                             else:
-                                # Modo INSERT: solo insertar (puede causar duplicados)
-                                print(f"   ➕ Modo INSERT: insertando nuevos documentos...")
+                                # Modo INSERT: insertar solo documentos nuevos (evitar duplicados)
+                                print(f"   ➕ Modo INSERT: insertando solo documentos nuevos...")
                                 try:
-                                    await collection.insert_many(documents)
-                                    imported_count += len(documents)
-                                    print(f"   ✅ Insertados {len(documents)} documentos")
-                                except Exception as e:
-                                    if "duplicate key" in str(e).lower():
-                                        print(f"   ⚠️  Algunos documentos ya existen (duplicados ignorados)")
-                                        # Intentar insertar uno por uno para manejar duplicados
-                                        for doc in documents:
-                                            try:
-                                                await collection.insert_one(doc)
-                                                imported_count += 1
-                                            except Exception:
-                                                # Ignorar duplicados
-                                                pass
-                                        print(f"   ✅ Insertados {imported_count} documentos (ignorando duplicados)")
+                                    # Validar y procesar ObjectIds antes de insertar
+                                    processed_documents = []
+                                    skipped_count = 0
+                                    
+                                    for doc in documents:
+                                        processed_doc = process_document_for_import(doc)
+                                        if not processed_doc:
+                                            continue
+                                        
+                                        # Verificar si el documento ya existe
+                                        exists_query = {}
+                                        if '_id' in processed_doc:
+                                            exists_query['_id'] = processed_doc['_id']
+                                        else:
+                                            # Sin _id, usar otros campos únicos según la colección
+                                            exists_query = await get_unique_query_for_collection(collection_name, processed_doc)
+                                        
+                                        if exists_query:
+                                            existing_doc = await collection.find_one(exists_query)
+                                            if existing_doc:
+                                                print(f"   ⚠️  Documento ya existe, saltando: {existing_doc.get('_id', 'sin _id')}")
+                                                skipped_count += 1
+                                                continue
+                                        
+                                        processed_documents.append(processed_doc)
+                                    
+                                    if processed_documents:
+                                        await collection.insert_many(processed_documents)
+                                        imported_count += len(processed_documents)
+                                        print(f"   ✅ Insertados {len(processed_documents)} documentos nuevos")
+                                        print(f"   ⏭️  Saltados {skipped_count} documentos existentes")
+                                        
+                                        # Verificar integridad después de la importación
+                                        await verify_import_integrity(db, collection_name, len(processed_documents))
                                     else:
-                                        raise e
+                                        print(f"   ⚠️  No se insertaron documentos nuevos")
+                                        print(f"   ⏭️  Todos los {len(documents)} documentos ya existían")
+                                except Exception as e:
+                                    print(f"   ❌ Error en modo INSERT: {e}")
+                                    # Intentar insertar uno por uno para manejar errores individuales
+                                    manual_count = 0
+                                    for doc in documents:
+                                        try:
+                                            processed_doc = process_document_for_import(doc)
+                                            if processed_doc:
+                                                # Verificar duplicados antes de insertar
+                                                existing = await collection.find_one({"_id": processed_doc.get('_id', "invalid")})
+                                                if not existing:
+                                                    await collection.insert_one(processed_doc)
+                                                    manual_count += 1
+                                        except Exception:
+                                            # Ignorar errores individuales
+                                            pass
+                                    
+                                    if manual_count > 0:
+                                        imported_count += manual_count
+                                        print(f"   ✅ Insertados manualmente {manual_count} documentos")
                         else:
                             print(f"   ⚠️  Colección vacía, saltando...")
                         

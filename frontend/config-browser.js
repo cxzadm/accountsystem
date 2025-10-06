@@ -5,7 +5,7 @@
 // Configuración hardcodeada para el navegador
 const BACKEND_CONFIG = {
   IP: '172.16.0.2',
-  PORT: '8006',
+  PORT: '8008',
   PROTOCOL: 'http'
 };
 

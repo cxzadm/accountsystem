@@ -1,7 +1,7 @@
 {
   "development": {
     "frontend": {
-      "port": 5176,
+      "port": 5178,
       "host": "0.0.0.0",
       "allowedHosts": [
         "accescontserver.sytes.net",
@@ -11,7 +11,7 @@
       ]
     },
     "backend": {
-      "port": 8006,
+      "port": 8008,
       "host": "0.0.0.0",
       "ip": "172.16.0.2",
       "protocol": "http"
@@ -23,14 +23,14 @@
   },
   "production": {
     "frontend": {
-      "port": 5176,
+      "port": 5178,
       "host": "0.0.0.0",
       "allowedHosts": [
         "accescontserver.sytes.net"
       ]
     },
     "backend": {
-      "port": 8006,
+      "port": 8008,
       "host": "0.0.0.0",
       "ip": "172.16.0.2",
       "protocol": "http"

@@ -24,7 +24,7 @@ services:
     container_name: sistema-contable-backend
     restart: unless-stopped
     ports:
-      - "8006:8006"
+      - "8008:8008"
     environment:
       - MONGODB_URL=mongodb://admin:password123@mongodb:27017/sistema_contable_ec?authSource=admin
       - SECRET_KEY=tu-clave-secreta-super-segura-para-produccion
@@ -36,7 +36,7 @@ services:
       - sistema-contable-network
     volumes:
       - ./backend:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8006
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8008
 
   frontend:
     build:
@@ -45,7 +45,7 @@ services:
     container_name: sistema-contable-frontend
     restart: unless-stopped
     ports:
-      - "5176:80"
+      - "5178:80"
     depends_on:
       - backend
     networks:

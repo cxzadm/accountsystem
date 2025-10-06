@@ -19,6 +19,7 @@ async def get_journal_entries(
     end_date: Optional[str] = Query(None, description="Fecha fin (YYYY-MM-DD)"),
     status: Optional[str] = Query(None),
     entry_type: Optional[str] = Query(None),
+    account_code: Optional[str] = Query(None, description="Filtrar por código de cuenta en líneas"),
     current_user: User = Depends(require_permission("journal:read"))
 ):
     """Obtener lista de asientos contables con filtros"""
@@ -46,6 +47,10 @@ async def get_journal_entries(
     if entry_type:
         query["entry_type"] = entry_type
     
+    if account_code:
+        # Filtrar por líneas que contengan el código de cuenta
+        query["lines.account_code"] = account_code
+
     entries = await JournalEntry.find(query).skip(skip).limit(limit).to_list()
     
     return [

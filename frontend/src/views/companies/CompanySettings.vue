@@ -60,8 +60,12 @@ export default {
     }
 
     onMounted(async () => {
-      company.value = await companyStore.getCompany(route.params.id)
-      if (company.value) companyStore.setCurrentCompany(company.value)
+      try {
+        company.value = await companyStore.getCompany(route.params.id)
+        if (company.value) companyStore.setCurrentCompany(company.value)
+      } catch (error) {
+        console.error('Error in CompanySettings onMounted:', error)
+      }
     })
 
     return { company, cards, go }

@@ -422,6 +422,71 @@
       </div>
     </div>
 
+    <!-- Associated Journal Entries Modal -->
+    <div
+      class="modal fade"
+      :class="{ show: showAssociatedModal }"
+      :style="{ display: showAssociatedModal ? 'block' : 'none' }"
+      tabindex="-1"
+    >
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Asientos asociados a {{ associatedAccount?.code }} - {{ associatedAccount?.name }}</h5>
+            <button type="button" class="btn-close" @click="showAssociatedModal = false"></button>
+          </div>
+          <div class="modal-body">
+            <div v-if="assocLoading" class="text-center py-4">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+              </div>
+            </div>
+            <div v-else>
+              <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                  <thead>
+                    <tr>
+                      <th>Número</th>
+                      <th>Fecha</th>
+                      <th>Descripción</th>
+                      <th class="text-end">Débito</th>
+                      <th class="text-end">Crédito</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="associatedEntries.length === 0">
+                      <td colspan="6" class="text-center text-muted py-3">Sin asientos</td>
+                    </tr>
+                    <tr v-for="entry in associatedEntries" :key="entry.id">
+                      <td><code>{{ entry.entry_number }}</code></td>
+                      <td>{{ new Date(entry.date).toLocaleDateString() }}</td>
+                      <td>{{ entry.description }}</td>
+                      <td class="text-end">{{ formatCurrency(getLineAmounts(entry).debit) }}</td>
+                      <td class="text-end">{{ formatCurrency(getLineAmounts(entry).credit) }}</td>
+                      <td>
+                        <router-link class="btn btn-sm btn-outline-primary" :to="{ name: 'Ledger', query: { account: associatedAccount?.code } }">Ver</router-link>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="d-flex justify-content-between align-items-center">
+                <small class="text-muted">Página {{ assocPage + 1 }}</small>
+                <div>
+                  <button class="btn btn-sm btn-outline-secondary me-2" :disabled="assocPage===0 || assocLoading" @click="assocPrev">Anterior</button>
+                  <button class="btn btn-sm btn-outline-secondary" :disabled="!assocHasMore || assocLoading" @click="assocNext">Siguiente</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showAssociatedModal = false">Cerrar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Account Form Modal -->
     <AccountFormModal
       :show="showCreateAccountModal"
@@ -434,7 +499,7 @@
 
     <!-- Modal Backdrop -->
     <div
-      v-if="showImportModal || showCreateAccountModal"
+      v-if="showImportModal || showCreateAccountModal || showAssociatedModal"
       class="modal-backdrop fade show"
       @click="closeAllModals"
     ></div>
@@ -476,6 +541,13 @@ export default {
     const clearing = ref(false)
     const showImportModal = ref(false)
     const showCreateAccountModal = ref(false)
+    const showAssociatedModal = ref(false)
+    const associatedAccount = ref(null)
+    const associatedEntries = ref([])
+    const assocLoading = ref(false)
+    const assocPage = ref(0)
+    const assocPageSize = 10
+    const assocHasMore = ref(false)
     const editingAccount = ref(null)
     const importPreview = ref([])
     const uploadedFile = ref(null)
@@ -1159,31 +1231,97 @@ export default {
     }
 
     const deleteAccount = async (account) => {
-      const confirmed = await alerts.confirm({
-        title: '¿Eliminar cuenta?',
-        text: `¿Estás seguro de que deseas eliminar la cuenta "${account.name}" (${account.code})? Esta acción no se puede deshacer.`,
-        icon: 'warning',
-        confirmButtonText: 'Eliminar',
-        confirmButtonColor: '#dc3545'
-      })
+      try {
+        // Verificar si la cuenta tiene movimientos en mayor o asientos
+        const checkResp = await api.get(`/ledger/check-account/${account.code}/`, {
+          params: { company_id: company.value.id }
+        })
 
-      if (confirmed) {
-        try {
-          await api.delete(`/accounts/${account.id}`, {
-            params: { company_id: company.value.id }
-          })
-          
-          alerts.success('Éxito', 'Cuenta eliminada correctamente')
-          
-          // Notificar cambio en el store
-          companyStore.notifyAccountsChanged()
-          
-          // Recargar la lista de cuentas
-          await loadAccounts()
-        } catch (error) {
-          console.error('Error deleting account:', error)
-          alerts.error('Error', 'Error al eliminar la cuenta')
+        const ledgerCount = checkResp?.data?.ledger_entries_count || 0
+        const journalCount = checkResp?.data?.journal_lines_count || 0
+
+        if (ledgerCount > 0 || journalCount > 0) {
+          associatedAccount.value = { code: account.code, name: account.name }
+          assocPage.value = 0
+          await loadAssociatedEntries()
+          showAssociatedModal.value = true
+          return
         }
+
+        const confirmed = await alerts.confirm({
+          title: '¿Eliminar cuenta?',
+          text: `¿Estás seguro de que deseas eliminar la cuenta "${account.name}" (${account.code})? Esta acción no se puede deshacer.`,
+          icon: 'warning',
+          confirmButtonText: 'Eliminar',
+          confirmButtonColor: '#dc3545'
+        })
+
+        if (!confirmed) return
+
+        await api.delete(`/accounts/${account.id}`, {
+          params: { company_id: company.value.id }
+        })
+
+        alerts.success('Éxito', 'Cuenta eliminada correctamente')
+
+        // Notificar cambio en el store
+        companyStore.notifyAccountsChanged()
+
+        // Recargar la lista de cuentas
+        await loadAccounts()
+      } catch (error) {
+        console.error('Error deleting account:', error)
+        const msg = error?.response?.data?.detail || 'Error al eliminar la cuenta'
+        alerts.error('Error', msg)
+      }
+    }
+
+    const loadAssociatedEntries = async () => {
+      if (!associatedAccount.value) return
+      assocLoading.value = true
+      try {
+        const skip = assocPage.value * assocPageSize
+        const resp = await api.get('/journal', {
+          params: {
+            company_id: company.value.id,
+            skip,
+            limit: assocPageSize,
+            status: 'posted',
+            account_code: associatedAccount.value.code
+          }
+        })
+        const list = resp?.data || []
+        associatedEntries.value = list
+        assocHasMore.value = list.length === assocPageSize
+      } catch (e) {
+        console.error('Error loading associated entries:', e)
+        associatedEntries.value = []
+        assocHasMore.value = false
+      } finally {
+        assocLoading.value = false
+      }
+    }
+
+    const assocNext = async () => {
+      if (!assocHasMore.value || assocLoading.value) return
+      assocPage.value += 1
+      await loadAssociatedEntries()
+    }
+
+    const assocPrev = async () => {
+      if (assocPage.value === 0 || assocLoading.value) return
+      assocPage.value -= 1
+      await loadAssociatedEntries()
+    }
+
+    const getLineAmounts = (entry) => {
+      try {
+        const lines = (entry?.lines || []).filter(l => l.account_code === associatedAccount.value?.code)
+        const debit = lines.reduce((s, l) => s + (l.debit || 0), 0)
+        const credit = lines.reduce((s, l) => s + (l.credit || 0), 0)
+        return { debit, credit }
+      } catch (e) {
+        return { debit: 0, credit: 0 }
       }
     }
 
@@ -1256,6 +1394,12 @@ export default {
       changedAccounts,
       showImportModal,
       showCreateAccountModal,
+      showAssociatedModal,
+      associatedAccount,
+      associatedEntries,
+      assocLoading,
+      assocPage,
+      assocHasMore,
       editingAccount,
       importPreview,
       parentAccounts,
@@ -1287,6 +1431,10 @@ export default {
       closeAllModals,
       editAccount,
       deleteAccount,
+      loadAssociatedEntries,
+      assocNext,
+      assocPrev,
+      getLineAmounts,
       handleSaveAccount,
       showExportMenu,
       exportMenuRef,
